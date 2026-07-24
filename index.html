@@ -1,7 +1,7 @@
 <!doctype html><html lang="fr"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>STL Print Cost & Manufacturability Checker — gratuit</title>
-<meta name="description" content="Analyse gratuite d'un fichier STL : volume, dimensions, poids, temps et coût d'impression 3D, détection des surplombs et risques de fabrication. Sans compte, sans inscription.">
+<title>3D Print Checker — coût, poids, fabricabilité, gratuit</title>
+<meta name="description" content="Analyse gratuite d'un fichier 3D (STL, OBJ, 3MF, PLY, GLTF/GLB, FBX, DAE, OFF, AMF) : volume, dimensions, poids, temps et coût d'impression 3D, détection des surplombs et risques de fabrication. Sans compte, sans inscription.">
 <style>
 :root{
   --bg:#000; --bg1:#0a0a0c; --card:#1c1c1e; --card2:#212123;
@@ -58,6 +58,8 @@ input[type=range]{accent-color:var(--blue);}
 .badge{display:inline-block;margin-top:8px;font-size:11px;font-weight:600;padding:2px 9px;border-radius:99px;}
 .badge.ok{background:rgba(48,209,88,.14);color:var(--green);} .badge.warn{background:rgba(255,159,10,.15);color:var(--amber);}
 
+.castable-note{margin-top:10px;padding:10px 12px;background:rgba(255,159,10,.10);border:1px solid rgba(255,159,10,.25);border-radius:10px;color:var(--dim);font-size:12.5px;line-height:1.5;}
+
 /* Risks */
 .risk{display:flex;gap:12px;align-items:flex-start;padding:12px 0;border-top:.5px solid var(--sep);}
 .risk:first-child{border-top:none;}
@@ -68,12 +70,36 @@ input[type=range]{accent-color:var(--blue);}
 
 footer{text-align:center;color:var(--dim2);font-size:12px;margin-top:34px;line-height:1.7;}
 footer .disc{max-width:640px;margin:0 auto 10px;}
+
+/* Export */
+.export-row{margin-top:18px;text-align:center;}
+.btn.export{opacity:.4;cursor:not-allowed;}
+.btn.export.ready{opacity:1;cursor:pointer;}
+
+/* Rapport imprimable — caché à l'écran, seul visible à l'impression */
+#report{display:none;}
+@media print{
+  body *{visibility:hidden;}
+  #report, #report *{visibility:visible;}
+  #report{display:block;position:absolute;top:0;left:0;width:100%;padding:0;color:#000;background:#fff;font-family:var(--mono);}
+  .r-head{text-align:center;border-bottom:3px solid #000;padding-bottom:10px;margin-bottom:14px;}
+  .r-head h1{font-size:20px;margin:0 0 4px;letter-spacing:0;}
+  .r-meta{display:grid;grid-template-columns:1fr 1fr;gap:4px 20px;font-size:12px;margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid #000;}
+  .r-conf{text-align:center;font-size:16px;font-weight:700;margin-bottom:16px;padding:8px;border:2px solid #000;}
+  .r-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:16px;font-size:12px;}
+  .r-stats div{border:1px solid #000;padding:6px;}
+  .r-check{margin-bottom:16px;}
+  .r-check .line{padding:4px 0;border-bottom:1px dotted #999;font-size:13px;}
+  .r-actions{margin-top:10px;}
+  .r-actions .box{padding:5px 0;font-size:13px;}
+  .r-foot{margin-top:20px;font-size:10px;text-align:center;color:#333;}
+}
 </style></head>
 <body>
 <div class="wrap">
   <header>
-    <h1><span class="g">STL Print Checker</span></h1>
-    <div class="sub">Dépose un fichier STL : coût matière, temps, poids, dimensions et <b>risques de fabrication</b> (surplombs, orientation, tenue plateau) — en 3 secondes.</div>
+    <h1><span class="g">3D Print Checker</span></h1>
+    <div class="sub">Dépose un fichier 3D — STL, OBJ, 3MF, PLY, GLTF/GLB, FBX, DAE, OFF, AMF — : coût matière, temps, poids, dimensions et <b>risques de fabrication</b> (surplombs, orientation, tenue plateau) — en quelques secondes.</div>
     <span class="free">100 % gratuit · aucun compte · rien n'est envoyé (tout se calcule dans ton navigateur)</span>
   </header>
 
@@ -83,14 +109,14 @@ footer .disc{max-width:640px;margin:0 auto 10px;}
       <h2>1 · Ton modèle</h2>
       <div id="drop">
         <div class="big">⬆︎</div>
-        <div class="t">Dépose un .STL ici</div>
-        <div class="h">ou clique pour choisir — binaire ou ASCII</div>
+        <div class="t">Dépose un modèle 3D ici</div>
+        <div class="h">STL · OBJ · 3MF · PLY · GLTF/GLB · FBX · DAE · OFF · AMF</div>
       </div>
       <div class="row-btn">
         <button class="btn pri" id="pick">Choisir un fichier</button>
         <button class="btn" id="demo">Charger un exemple</button>
       </div>
-      <input type="file" id="file" accept=".stl" hidden>
+      <input type="file" id="file" accept=".stl,.obj,.3mf,.ply,.gltf,.glb,.fbx,.dae,.off,.amf" hidden>
       <div id="view" style="margin-top:14px"><div class="hint">glisser = tourner · molette = zoom</div></div>
       <div class="ctrls">
         <div class="fld"><label>Imprimante</label>
@@ -101,6 +127,15 @@ footer .disc{max-width:640px;margin:0 auto 10px;}
           <input type="range" id="infill" min="5" max="100" step="5" value="20"></div>
         <div class="fld"><label>Épaisseur paroi <span class="infl" id="wallv">1.2 mm</span></label>
           <input type="range" id="wall" min="0.8" max="3" step="0.2" value="1.2"></div>
+        <div class="fld" style="grid-column:1/-1">
+          <label>Unité du fichier importé <span class="infl" id="unithint"></span></label>
+          <select id="unit">
+            <option value="mm">Millimètres (mm)</option>
+            <option value="cm">Centimètres (cm)</option>
+            <option value="m">Mètres (m)</option>
+            <option value="in">Pouces (in)</option>
+          </select>
+        </div>
       </div>
     </div>
 
@@ -115,42 +150,107 @@ footer .disc{max-width:640px;margin:0 auto 10px;}
         <div class="stat"><div class="k">Coût matière</div><div class="v cost" id="s-c">—</div></div>
         <div class="stat"><div class="k">Plateau</div><div class="v" id="s-bed" style="font-size:15px">—</div></div>
       </div>
+      <div class="castable-note" id="castable-note" style="display:none"></div>
       <h2 style="margin-top:22px">3 · Fabricabilité</h2>
       <div id="risks"><div class="empty">Charge un modèle pour lancer l'analyse.</div></div>
+      <div class="export-row">
+        <button class="btn export" id="export" disabled>📄 Exporter le rapport (PDF)</button>
+      </div>
     </div>
   </div>
 
   <footer>
-    <div class="disc">Estimations indicatives (débit ~10 mm³/s, modèle coque+remplissage) — pas un slicer réel. Le calcul de paroi minimale exacte nécessite un slicing. Aucune donnée quittée ton navigateur.</div>
+    <div class="disc">Estimations indicatives (débit ~10 mm³/s, modèle coque+remplissage pour le FDM ; nb de couches × cure pour la résine/cire castable) — pas un slicer réel. Le calcul de paroi minimale exacte nécessite un slicing. Import multi-format (OBJ, 3MF, GLTF/GLB, FBX, DAE...) fait entièrement dans ton navigateur — aucun fichier n'est envoyé à un serveur. Les formats CAO paramétriques (STEP, IGES) ne sont pas encore supportés.</div>
     Moteur de calcul dérivé de <b>General Design Studio</b>. · Un outil DELIGNY.
   </footer>
 </div>
 
-<script type="importmap">{ "imports": { "three": "https://esm.sh/three@0.160.0" } }</script>
+<!-- Rapport imprimable — rempli par buildReport(), visible seulement à l'impression -->
+<div id="report">
+  <div class="r-head">
+    <h1>PRINT CHECK REPORT</h1>
+    <div style="font-size:11px">STL Print Checker — DELIGNY R&D</div>
+  </div>
+  <div class="r-meta">
+    <div><b>Projet :</b> <span id="r-project"></span></div>
+    <div><b>Date :</b> <span id="r-date"></span></div>
+    <div><b>Machine :</b> <span id="r-printer"></span></div>
+    <div><b>Matériau :</b> <span id="r-material"></span></div>
+  </div>
+  <div class="r-conf" id="r-confidence"></div>
+  <div class="r-stats" id="r-stats"></div>
+  <div class="r-check">
+    <div id="r-checklist"></div>
+  </div>
+  <div class="r-actions">
+    <b>Actions recommandées</b>
+    <div id="r-actionlist"></div>
+  </div>
+  <div class="r-foot">Estimations indicatives, pas un slicer réel · Généré localement, aucune donnée envoyée · Un outil DELIGNY R&D</div>
+</div>
+
+<script type="importmap">{ "imports": {
+  "three": "https://esm.sh/three@0.160.0",
+  "three/addons/": "https://esm.sh/three@0.160.0/examples/jsm/"
+} }</script>
 <script type="module">
 import * as THREE from 'three';
+import { OBJLoader } from 'three/addons/loaders/OBJLoader.js';
+import { PLYLoader } from 'three/addons/loaders/PLYLoader.js';
+import { ThreeMFLoader } from 'three/addons/loaders/3MFLoader.js';
+import { AMFLoader } from 'three/addons/loaders/AMFLoader.js';
+import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
+import { ColladaLoader } from 'three/addons/loaders/ColladaLoader.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
 // ── Données moteur (copiées fidèlement de print_engine.js) ──────────────────
-const MATERIALS = {
-  PLA:  { density:1.24, priceKg:22, label:"PLA" },
-  PETG: { density:1.27, priceKg:25, label:"PETG" },
-  ABS:  { density:1.04, priceKg:24, label:"ABS" },
-  ASA:  { density:1.07, priceKg:30, label:"ASA (UV/ext.)" },
-  TPU:  { density:1.21, priceKg:35, label:"TPU (souple)" },
-};
-const PRINTERS = {
-  bambu_a1:    { name:"Bambu Lab A1",      bed:[256,256,256] },
-  bambu_a1mini:{ name:"Bambu Lab A1 mini", bed:[180,180,180] },
-  prusa_mk4:   { name:"Prusa MK4",         bed:[250,210,220] },
-  ender3:      { name:"Creality Ender-3",  bed:[220,220,250] },
-  x1c:         { name:"Bambu Lab X1C",     bed:[256,256,256] },
-};
-const OVERHANG_LIMIT = 50; // ° au-delà desquels supports requis
+// Groupes déclarés séparément (FDM filament vs résine/cire coulée) pour peupler
+// les <select> avec des <optgroup> — les deux familles ne se calculent pas pareil
+// (voir castable:true plus bas, qui désactive le "temps" FDM pour la résine/cire).
+const MATERIAL_GROUPS = [
+  { label:"Filament FDM", items:{
+    PLA:  { density:1.24, priceKg:22, label:"PLA" },
+    PETG: { density:1.27, priceKg:25, label:"PETG" },
+    ABS:  { density:1.04, priceKg:24, label:"ABS" },
+    ASA:  { density:1.07, priceKg:30, label:"ASA (UV/ext.)" },
+    TPU:  { density:1.21, priceKg:35, label:"TPU (souple)" },
+  }},
+  { label:"Résine / cire — cire perdue (casting bijouterie)", items:{
+    RESIN_CASTABLE: { density:1.10, priceKg:90,  label:"Résine castable (SLA/DLP)", castable:true },
+    WAX_CASTING:    { density:0.95, priceKg:110, label:"Cire de coulée (wax)",      castable:true },
+  }},
+];
+const MATERIALS = Object.assign({}, ...MATERIAL_GROUPS.map(g=>g.items));
 
-// ── Remplir les selects ─────────────────────────────────────────────────────
+const PRINTER_GROUPS = [
+  { label:"FDM (filament)", items:{
+    bambu_a1:    { name:"Bambu Lab A1",      bed:[256,256,256] },
+    bambu_a1mini:{ name:"Bambu Lab A1 mini", bed:[180,180,180] },
+    prusa_mk4:   { name:"Prusa MK4",         bed:[250,210,220] },
+    ender3:      { name:"Creality Ender-3",  bed:[220,220,250] },
+    x1c:         { name:"Bambu Lab X1C",     bed:[256,256,256] },
+  }},
+  { label:"Résine (SLA/DLP, format bijouterie)", items:{
+    photon_mono: { name:"Anycubic Photon Mono", bed:[130,80,165] },
+    saturn:      { name:"Elegoo Saturn",         bed:[192,120,200] },
+  }},
+];
+const PRINTERS = Object.assign({}, ...PRINTER_GROUPS.map(g=>g.items));
+const OVERHANG_LIMIT = 50; // ° au-delà desquels supports requis
+const UNIT_FACTORS = { mm:1, cm:10, m:1000, in:25.4 }; // → mm
+// Unité par défaut selon le format : STL/3MF/AMF/PLY/OFF sont quasi toujours en mm
+// (standards impression 3D) ; glTF impose le mètre par spec ; FBX exporte souvent en cm ;
+// OBJ/DAE n'ont pas d'unité normée — mm par défaut, à corriger via le sélecteur si besoin.
+const DEFAULT_UNIT = { stl:'mm', '3mf':'mm', amf:'mm', ply:'mm', off:'mm', obj:'mm', dae:'m', fbx:'cm', gltf:'m', glb:'m' };
+
+// ── Remplir les selects (par groupe) ────────────────────────────────────────
 const $=id=>document.getElementById(id);
-$('printer').innerHTML = Object.entries(PRINTERS).map(([k,v])=>`<option value="${k}">${v.name} · ${v.bed.join('×')}</option>`).join('');
-$('material').innerHTML = Object.entries(MATERIALS).map(([k,v])=>`<option value="${k}"${k==='PLA'?' selected':''}>${v.label}</option>`).join('');
+$('printer').innerHTML = PRINTER_GROUPS.map(g=>`<optgroup label="${g.label}">${
+  Object.entries(g.items).map(([k,v])=>`<option value="${k}">${v.name} · ${v.bed.join('×')}</option>`).join('')
+}</optgroup>`).join('');
+$('material').innerHTML = MATERIAL_GROUPS.map(g=>`<optgroup label="${g.label}">${
+  Object.entries(g.items).map(([k,v])=>`<option value="${k}"${k==='PLA'?' selected':''}>${v.label}</option>`).join('')
+}</optgroup>`).join('');
 
 // ── Parseur STL (binaire + ASCII) → triangles [[x,y,z]×3] ───────────────────
 function parseSTL(buf){
@@ -178,6 +278,88 @@ function parseAscii(txt){
   let m, buf=[];
   while((m=re.exec(txt))){ buf.push([+m[1],+m[2],+m[3]]); if(buf.length===3){tris.push(buf);buf=[];} }
   return tris;
+}
+
+// ── Parseur OFF (texte, pas de loader three.js officiel — format simple) ────
+function parseOFF(txt){
+  const lines = txt.split(/\r?\n/).map(l=>l.trim()).filter(l=>l && !l.startsWith('#'));
+  let i=0;
+  if(!lines.length) return [];
+  if(lines[i]==='OFF' || lines[i]==='COFF' || lines[i]==='NOFF') i++;
+  else if(/^N?C?OFF/.test(lines[i])){ lines[i]=lines[i].replace(/^N?C?OFF/,'').trim(); if(!lines[i]) i++; }
+  const head = lines[i++].split(/\s+/).map(Number);
+  const nv=head[0]||0, nf=head[1]||0;
+  const verts=[];
+  for(let k=0;k<nv;k++){ const p=lines[i++].split(/\s+/).map(Number); verts.push([p[0],p[1],p[2]]); }
+  const tris=[];
+  for(let k=0;k<nf;k++){
+    const p=lines[i++].split(/\s+/).map(Number);
+    const cnt=p[0], idx=p.slice(1,1+cnt);
+    for(let t=1;t<cnt-1;t++){
+      const a=verts[idx[0]], b=verts[idx[t]], c=verts[idx[t+1]];
+      if(a&&b&&c) tris.push([a,b,c]);
+    }
+  }
+  return tris;
+}
+
+// ── Formats maillage via three.js (OBJ/PLY/3MF/AMF/FBX/DAE/GLTF/GLB) ────────
+// Toute géométrie chargée (BufferGeometry seule ou scène Object3D) est ramenée
+// au même format triangles [[x,y,z]×3] que parseSTL(), pour réutiliser tel
+// quel analyze()/estimate()/risks()/showMesh() en aval — un seul pipeline,
+// quel que soit le format d'entrée.
+const _v = new THREE.Vector3();
+function geometryToTris(geometry, matrixWorld){
+  if(!geometry || !geometry.attributes || !geometry.attributes.position) return [];
+  const geo = geometry.index ? geometry.toNonIndexed() : geometry;
+  const pos = geo.attributes.position;
+  const tris=[];
+  for(let i=0;i+2<pos.count;i+=3){
+    const tri=[];
+    for(let k=0;k<3;k++){
+      _v.fromBufferAttribute(pos, i+k);
+      if(matrixWorld) _v.applyMatrix4(matrixWorld);
+      tri.push([_v.x,_v.y,_v.z]);
+    }
+    tris.push(tri);
+  }
+  return tris;
+}
+function objectToTris(root){
+  root.updateMatrixWorld(true);
+  let tris=[];
+  root.traverse(obj=>{ if(obj.isMesh && obj.geometry) tris = tris.concat(geometryToTris(obj.geometry, obj.matrixWorld)); });
+  return tris;
+}
+function anyToTris(result){
+  if(!result) return [];
+  if(result.isBufferGeometry) return geometryToTris(result, null);
+  if(result.isObject3D) return objectToTris(result);
+  if(result.scene && result.scene.isObject3D) return objectToTris(result.scene); // ColladaLoader → {scene}
+  return [];
+}
+function parseGLTF(data){
+  return new Promise((resolve,reject)=>{
+    new GLTFLoader().parse(data, '', gltf=>resolve(objectToTris(gltf.scene)), err=>reject(err));
+  });
+}
+// Dispatcher par extension → tableau de triangles (async pour couvrir glTF).
+async function parseByExtension(file){
+  const ext=(file.name.split('.').pop()||'').toLowerCase();
+  const buf=await file.arrayBuffer();
+  switch(ext){
+    case 'stl': return { ext, tris: parseSTL(buf) };
+    case 'obj': return { ext, tris: anyToTris(new OBJLoader().parse(new TextDecoder().decode(buf))) };
+    case 'ply': return { ext, tris: anyToTris(new PLYLoader().parse(buf)) };
+    case '3mf': return { ext, tris: anyToTris(new ThreeMFLoader().parse(buf)) };
+    case 'amf': return { ext, tris: anyToTris(new AMFLoader().parse(buf)) };
+    case 'fbx': return { ext, tris: anyToTris(new FBXLoader().parse(buf, '')) };
+    case 'dae': return { ext, tris: anyToTris(new ColladaLoader().parse(new TextDecoder().decode(buf), '')) };
+    case 'off': return { ext, tris: parseOFF(new TextDecoder().decode(buf)) };
+    case 'glb': return { ext, tris: await parseGLTF(buf) };
+    case 'gltf': return { ext, tris: await parseGLTF(new TextDecoder().decode(buf)) };
+    default: throw new Error(`Format ".${ext}" non supporté. Formats acceptés : STL, OBJ, 3MF, PLY, GLTF/GLB, FBX, DAE, OFF, AMF.`);
+  }
 }
 
 // ── Analyse géométrique (volume, bbox, surface, surplomb) — Z = hauteur ─────
@@ -215,6 +397,12 @@ function analyze(tris){
 }
 
 // ── Estimation (fidèle print_engine.estimate + modèle coque/remplissage) ────
+// Poids/coût restent valides quel que soit le procédé (volume × densité × prix/kg).
+// Le TEMPS, en revanche, dépend du procédé : FDM = débit d'extrusion (volume),
+// résine/cire (castable:true) = nombre de couches × temps de cure, quasi
+// indépendant du volume — les deux modèles ne sont pas interchangeables, donc
+// on ne réutilise jamais la formule FDM pour la résine/cire (isCastable:true
+// = le "temps" FDM ci-dessous est absent/non pertinent, voir update()).
 function estimate(g, printerKey, materialKey, infill, wall){
   const pr=PRINTERS[printerKey]||PRINTERS.bambu_a1, mat=MATERIALS[materialKey]||MATERIALS.PLA;
   const shellMm3 = Math.min(g.enclosedMm3, g.areaMm2*wall);          // coque = surface × paroi
@@ -222,13 +410,22 @@ function estimate(g, printerKey, materialKey, infill, wall){
   const materialMm3 = shellMm3 + (infill/100)*interior;             // matière réelle estimée
   const weightG = materialMm3/1000*mat.density;
   const costEur = weightG/1000*mat.priceKg;
-  const timeMin = (materialMm3/10)/60*1.15;                         // débit 10 mm³/s +15%
+  const isCastable = !!mat.castable;
+  let timeMin=0;
+  if(isCastable){
+    // Vat photopolymerization / dépôt cire : temps ≈ nb de couches × cure par couche
+    // (hauteur / épaisseur de couche), pas le volume. Hypothèses indicatives DLP courantes.
+    const LAYER_H_MM=0.05, CURE_S_PER_LAYER=8;
+    timeMin = (g.size[2]/LAYER_H_MM)*CURE_S_PER_LAYER/60;
+  } else {
+    timeMin = (materialMm3/10)/60*1.15;                             // débit 10 mm³/s +15%
+  }
   const s=g.size;
   const fits = s[0]<=pr.bed[0] && s[1]<=pr.bed[1] && s[2]<=pr.bed[2];
   const bedUsage = Math.round(Math.max(s[0]/pr.bed[0], s[1]/pr.bed[1])*100);
   return { materialMm3, weightG:Math.round(weightG), costEur:+costEur.toFixed(2),
            timeMin:Math.round(timeMin), timeH:+(timeMin/60).toFixed(1),
-           fits, bedUsage, bed:pr.bed };
+           fits, bedUsage, bed:pr.bed, isCastable };
 }
 
 // ── Risques de fabricabilité + conseils clairs ──────────────────────────────
@@ -261,11 +458,14 @@ const cam=new THREE.PerspectiveCamera(45,1,0.01,5000);
 let curMesh=null, rot={x:-1.1,y:0.6}, dist=3, drag=false, lx=0,ly=0;
 function sizeView(){ const w=vel.clientWidth,h=vel.clientHeight; renderer.setSize(w,h); renderer.setPixelRatio(Math.min(2,devicePixelRatio)); cam.aspect=w/h; cam.updateProjectionMatrix(); }
 renderer.domElement.style.cursor='grab'; vel.appendChild(renderer.domElement);
-scene.add(new THREE.HemisphereLight(0xffffff,0x223344,1.1));
-const dl=new THREE.DirectionalLight(0xffffff,1.4); dl.position.set(1,2,1.5); scene.add(dl);
+scene.add(new THREE.HemisphereLight(0xffffff,0x223344,1.5));
+// Lumière "frontale" (headlight) : suit la caméra à chaque frame plutôt que fixe dans
+// la scène — sinon la moitié des angles de rotation regarde une face non éclairée.
+const dl=new THREE.DirectionalLight(0xffffff,1.4); scene.add(dl);
 function frame(){ requestAnimationFrame(frame);
   const r=dist; cam.position.set(Math.sin(rot.y)*Math.cos(rot.x)*r, Math.sin(rot.x)*r, Math.cos(rot.y)*Math.cos(rot.x)*r);
-  cam.lookAt(0,0,0); renderer.render(scene,cam); }
+  cam.lookAt(0,0,0); dl.position.copy(cam.position);
+  renderer.render(scene,cam); }
 addEventListener('resize',sizeView);
 renderer.domElement.addEventListener('pointerdown',e=>{drag=true;lx=e.clientX;ly=e.clientY;renderer.domElement.style.cursor='grabbing';});
 addEventListener('pointerup',()=>{drag=false;renderer.domElement.style.cursor='grab';});
@@ -286,29 +486,94 @@ function showMesh(tris){
 }
 
 // ── Pipeline : charger → analyser → afficher ────────────────────────────────
-let G=null;
+let G=null, RAW=null, curFileName='Modèle 3D';
+function scaleTris(tris, factor){
+  if(factor===1) return tris;
+  return tris.map(t=>t.map(p=>[p[0]*factor,p[1]*factor,p[2]*factor]));
+}
 function run(tris){
-  if(!tris||tris.length<1){ alert("STL illisible ou vide."); return; }
-  G=analyze(tris); showMesh(tris); update();
+  if(!tris||tris.length<1){ alert("Fichier illisible ou vide (aucun triangle exploitable)."); return; }
+  RAW=tris; showMesh(tris); update();
 }
 function update(){
-  if(!G) return;
+  if(!RAW) return;
+  const factor=UNIT_FACTORS[$('unit').value]||1;
+  G=analyze(scaleTris(RAW, factor));
   const est=estimate(G,$('printer').value,$('material').value,+$('infill').value,+$('wall').value);
   const s=G.size.map(x=>Math.round(x));
   $('s-dim').innerHTML=`${s[0]}×${s[1]}×${s[2]}<small> mm</small>`;
   $('s-vol').innerHTML=`${(est.materialMm3/1000).toFixed(1)}<small> cm³</small>`;
   $('s-w').innerHTML=`${est.weightG}<small> g</small>`;
-  $('s-t').innerHTML=`${est.timeH}<small> h</small>`;
+  $('s-t').innerHTML=est.isCastable?`${est.timeH}<small> h · résine</small>`:`${est.timeH}<small> h</small>`;
   $('s-c').innerHTML=`${est.costEur.toFixed(2)}<small> €</small>`;
   $('s-bed').innerHTML=est.fits?`<span class="badge ok">tient · ${est.bedUsage}%</span>`:`<span class="badge warn">dépasse</span>`;
-  $('risks').innerHTML=risks(G,est).map(([ic,cl,t,d])=>`<div class="risk ${cl}"><div class="ic">${ic}</div><div class="body"><b>${t}</b><div class="d">${d}</div></div></div>`).join('');
+  const note=$('castable-note');
+  if(est.isCastable){
+    note.style.display='block';
+    note.innerHTML='⚠️ Poids et coût matière restent valides (volume × densité × prix/kg). Le <b>temps</b> utilise un modèle résine/cire (nb de couches × cure) et non le débit FDM — hypothèses indicatives (couche 0.05 mm, 8 s/couche), pas un slicer résine réel. Densité/prix de la résine castable et de la cire sont des ordres de grandeur de catégorie, pas ceux d\'une référence précise — à recaler sur la fiche technique du matériau réellement utilisé.';
+  } else {
+    note.style.display='none';
+  }
+  const R=risks(G,est);
+  $('risks').innerHTML=R.map(([ic,cl,t,d])=>`<div class="risk ${cl}"><div class="ic">${ic}</div><div class="body"><b>${t}</b><div class="d">${d}</div></div></div>`).join('');
+  const exp=$('export'); exp.disabled=false; exp.classList.add('ready');
 }
-['printer','material','infill','wall'].forEach(id=>$(id).addEventListener('input',()=>{
+
+// ── Rapport imprimable (atelier — utile, pas joli) ──────────────────────────
+function confidence(R){
+  if(R.some(([ic])=>ic==='🚫')) return ['🔴','À CORRIGER AVANT IMPRESSION'];
+  if(R.some(([,cl])=>cl==='warn')) return ['🟠','ATTENTION AVANT IMPRESSION'];
+  return ['🟢','IMPRIMABLE'];
+}
+function buildReport(){
+  if(!G) return;
+  const est=estimate(G,$('printer').value,$('material').value,+$('infill').value,+$('wall').value);
+  const R=risks(G,est);
+  const [emoji,label]=confidence(R);
+  const pr=PRINTERS[$('printer').value]||PRINTERS.bambu_a1, mat=MATERIALS[$('material').value]||MATERIALS.PLA;
+  $('r-project').textContent=curFileName;
+  $('r-date').textContent=new Date().toLocaleDateString('fr-FR');
+  $('r-printer').textContent=pr.name;
+  $('r-material').textContent=mat.label;
+  $('r-confidence').textContent=`${emoji} ${label}`;
+  const s=G.size.map(x=>Math.round(x));
+  $('r-stats').innerHTML=[
+    ['Dimensions',`${s[0]}×${s[1]}×${s[2]} mm`],
+    ['Poids',`${est.weightG} g`],
+    ['Temps',est.isCastable?`${est.timeH} h (modèle résine, indicatif)`:`${est.timeH} h`],
+    ['Coût matière',`${est.costEur.toFixed(2)} €`],
+    ['Plateau',est.fits?`OK (${est.bedUsage}%)`:'DÉPASSE'],
+    ['Remplissage',`${$('infill').value} % · paroi ${$('wall').value} mm`],
+  ].map(([k,v])=>`<div><b>${k}</b><br>${v}</div>`).join('');
+  $('r-checklist').innerHTML=R.map(([ic,,t])=>`<div class="line">${ic==='✅'?'☑':'☐'} ${t}</div>`).join('');
+  const actions=R.filter(([,cl])=>cl==='warn').map(([,,,d])=>d);
+  $('r-actionlist').innerHTML=actions.length
+    ? actions.map(d=>`<div class="box">☐ ${d}</div>`).join('')
+    : '<div class="box">☑ Aucune action requise — prêt à imprimer.</div>';
+}
+$('export').onclick=()=>{ if(!G) return; buildReport(); window.print(); };
+['printer','material','infill','wall','unit'].forEach(id=>$(id).addEventListener('input',()=>{
   $('inflv').textContent=$('infill').value+' %'; $('wallv').textContent=(+$('wall').value).toFixed(1)+' mm'; update();
 }));
 
-// upload
-function loadFile(f){ if(!f)return; const rd=new FileReader(); rd.onload=()=>run(parseSTL(rd.result)); rd.readAsArrayBuffer(f); }
+// upload — dispatch par extension, tout reste local au navigateur
+async function loadFile(f){
+  if(!f) return;
+  curFileName=f.name.replace(/\.[^.]+$/,'');
+  const dz=$('drop'); const prevText=dz.querySelector('.t').textContent;
+  dz.querySelector('.t').textContent='Lecture en cours…';
+  try{
+    const { ext, tris } = await parseByExtension(f);
+    $('unit').value = DEFAULT_UNIT[ext] || 'mm';
+    $('unithint').textContent = `— détecté "${ext.toUpperCase()}", ajuste si les dimensions semblent fausses`;
+    run(tris);
+  }catch(err){
+    console.error(err);
+    alert("Impossible de lire ce fichier : " + (err && err.message ? err.message : err));
+  }finally{
+    dz.querySelector('.t').textContent=prevText;
+  }
+}
 $('pick').onclick=()=>$('file').click();
 $('file').onchange=e=>loadFile(e.target.files[0]);
 const dz=$('drop');
