@@ -71,6 +71,7 @@ input[type=range]{accent-color:var(--blue);}
 /* G-code toolbox */
 .sechead{text-align:center;font-size:24px;font-weight:650;letter-spacing:-.02em;margin:40px 0 0;}
 .sechead .g{background:linear-gradient(90deg,#ff9f0a,#ff453a 60%,#ff375f);-webkit-background-clip:text;background-clip:text;color:transparent;}
+.sechead .g3{background:linear-gradient(90deg,#30d158,#64d2ff);-webkit-background-clip:text;background-clip:text;color:transparent;}
 .secsub{text-align:center;color:var(--dim);font-size:14.5px;margin:6px auto 0;max-width:600px;}
 #gdrop{border:1.5px dashed var(--sep);border-radius:16px;padding:22px 18px;text-align:center;cursor:pointer;transition:border-color .2s,background .2s;}
 #gdrop.hover{border-color:var(--amber);background:rgba(255,159,10,.06);}
@@ -103,6 +104,11 @@ input[type=text].gtxt{width:100%;background:#141416;color:var(--txt);border:.5px
 #gverdict{margin-left:10px;vertical-align:middle;font-size:12px;}
 #s-elec{margin-top:10px;font-size:12.5px;color:var(--dim2);}
 
+/* Photogrammétrie */
+#matpreview{margin-top:14px;background:#fff;border-radius:14px;padding:10px;}
+#matpreview svg{width:100%;height:auto;display:block;}
+#scalemat{display:none;}
+
 footer{text-align:center;color:var(--dim2);font-size:12px;margin-top:34px;line-height:1.7;}
 footer .disc{max-width:640px;margin:0 auto 10px;}
 
@@ -128,6 +134,10 @@ footer .disc{max-width:640px;margin:0 auto 10px;}
   .r-actions{margin-top:10px;}
   .r-actions .box{padding:5px 0;font-size:13px;}
   .r-foot{margin-top:20px;font-size:10px;text-align:center;color:#333;}
+  /* Impression de la planche photogrammétrie : remplace le rapport */
+  body.print-mat #report{display:none;}
+  body.print-mat #scalemat, body.print-mat #scalemat *{visibility:visible;}
+  body.print-mat #scalemat{display:block;position:absolute;top:0;left:0;background:#fff;}
 }
 </style></head>
 <body>
@@ -298,6 +308,41 @@ footer .disc{max-width:640px;margin:0 auto 10px;}
     </div>
   </div>
 
+  <!-- ── PHOTOGRAMMÉTRIE ───────────────────────────────────────────────── -->
+  <h2 class="sechead"><span class="g3">Photogrammétrie — numériser un objet réel</span></h2>
+  <div class="secsub">Transforme un objet physique en maillage 3D avec un simple téléphone : le <b>guide de capture</b> qui évite 90 % des échecs, et la <b>planche d'échelle A4 à imprimer</b> pour obtenir de vraies dimensions. Le maillage obtenu se dépose ensuite en haut de page pour le contrôle prévol.</div>
+
+  <div class="grid">
+    <!-- LEFT : capture guide -->
+    <div class="card">
+      <h2>7 · Bien capturer ton objet (photos ou vidéo)</h2>
+      <div class="risk"><div class="ic">📷</div><div class="body"><b>30 à 60 photos qui se chevauchent (60–80 %)</b><div class="d">Fais le tour complet à 3 hauteurs (vue basse, à niveau, plongée), une photo tous les 10–15°. Chaque détail doit apparaître sur au moins 3 photos.</div></div></div>
+      <div class="risk"><div class="ic">💡</div><div class="body"><b>Lumière douce et constante</b><div class="d">Ciel voilé, lightbox ou pièce bien éclairée. Jamais de flash, pas d'ombres dures, et verrouille l'exposition : la luminosité ne doit pas changer pendant le tour.</div></div></div>
+      <div class="risk"><div class="ic">🎯</div><div class="body"><b>Netteté avant tout</b><div class="d">Focale fixe (pas de zoom en cours de route), ISO bas, f/8–f/11 si réglable, appareil stable. Une photo floue est pire qu'une photo manquante — supprime-les.</div></div></div>
+      <div class="risk"><div class="ic">🧴</div><div class="body"><b>Surfaces difficiles : matifie</b><div class="d">Brillant, transparent, noir profond et surfaces unies font échouer la reconstruction. Matifie (spray de scan, talc, craie sèche) ou ajoute des repères au feutre effaçable.</div></div></div>
+      <div class="risk"><div class="ic">🔄</div><div class="body"><b>Deux modes, ne les mélange pas</b><div class="d">Soit TU tournes autour (l'objet et son décor restent strictement immobiles, fond riche en détails = bien), soit plateau tournant (la planche d'échelle tourne AVEC l'objet, et le fond doit être uni, sans aucun détail fixe).</div></div></div>
+      <div class="risk"><div class="ic">🎬</div><div class="body"><b>En vidéo : 4K et lent</b><div class="d">2 tours complets à 2 hauteurs, mouvement très lent, puis extrais ~1 image par seconde. Les photos posées restent meilleures que la vidéo.</div></div></div>
+      <div class="risk"><div class="ic">🧩</div><div class="body"><b>Logiciels gratuits</b><div class="d">RealityScan (mobile, gratuit), Meshroom (PC, open source), ou l'app de scan de ton téléphone. Exporte en OBJ/PLY/STL puis dépose le maillage en haut de cette page.</div></div></div>
+      <div class="risk"><div class="ic">📐</div><div class="body"><b>L'échelle : le point aveugle de la photogrammétrie</b><div class="d">Un scan photo ne connaît PAS les dimensions réelles. Pose l'objet sur la planche ci-contre : ses repères de taille connue permettent de remettre le maillage à l'échelle exacte dans ton logiciel.</div></div></div>
+    </div>
+
+    <!-- RIGHT : printable scale mat -->
+    <div class="card">
+      <h2>8 · Planche d'échelle à imprimer (A4)</h2>
+      <div class="gnote" style="margin-top:0">
+        ① <b>Imprime à 100 %</b> (« taille réelle » — jamais « ajuster à la page »), A4 portrait.<br>
+        ② <b>Vérifie l'impression</b> : la barre doit mesurer <b>100,0 mm</b> au réglet, OU pose une carte bancaire sur le cadre en bas — elle doit le couvrir exactement. Si écart : corrige l'échelle d'impression avant usage.<br>
+        ③ <b>Pose l'objet au centre</b>, planche bien à plat, et cadre tes photos pour que les pastilles et le mouchetis apparaissent autour de l'objet.<br>
+        ④ <b>Dans ton logiciel</b>, définis la distance entre pastilles (166,0 mm horizontale · 200,0 mm verticale) ou la barre de 100,0 mm → ton maillage est à l'échelle réelle.
+      </div>
+      <div id="matpreview"></div>
+      <div class="export-row">
+        <button class="btn pri" id="printmat">🖨 Imprimer la planche (A4 · 100 %)</button>
+      </div>
+      <div class="gnote">Le mouchetis (points aléatoires) donne aux algorithmes des repères fiables pour recaler les photos entre elles — utile surtout sur plateau tournant et pour les objets peu texturés.</div>
+    </div>
+  </div>
+
   <footer>
     <div class="disc">Estimations indicatives (débit ~10 mm³/s, modèle coque+remplissage pour le FDM ; nb de couches × cure pour la résine/cire castable) — pas un slicer réel. Le calcul de paroi minimale exacte nécessite un slicing. Import multi-format (OBJ, 3MF, GLTF/GLB, FBX, DAE...) fait entièrement dans ton navigateur — aucun fichier n'est envoyé à un serveur. Les formats CAO paramétriques (STEP, IGES) ne sont pas encore supportés. La boîte à outils G-code lit et modifie ton fichier entièrement en local (rien n'est envoyé). Le contrôle de sécurité est indicatif : il détecte les erreurs les plus dangereuses mais ne remplace ni ton slicer ni ta vigilance — reste à proximité de la machine pour une première impression modifiée.</div>
     Moteur de calcul dérivé de <b>General Design Studio</b>. · Un outil DELIGNY.
@@ -329,6 +374,9 @@ footer .disc{max-width:640px;margin:0 auto 10px;}
   </div>
   <div class="r-foot">Estimations indicatives, pas un slicer réel · Généré localement, aucune donnée envoyée · Un outil DELIGNY R&D</div>
 </div>
+
+<!-- Planche photogrammétrie imprimable — remplie par scaleMatSVG(), visible seulement à l'impression (body.print-mat) -->
+<div id="scalemat"></div>
 
 <script type="importmap">{ "imports": {
   "three": "https://esm.sh/three@0.160.0",
@@ -1438,6 +1486,63 @@ function gDemoText(){
   return L.join('\n');
 }
 $('gdemo').onclick=()=>gLoadText(gDemoText(),'exemple-cube.gcode');
+// ══ PLANCHE PHOTOGRAMMÉTRIE (A4, unités SVG = mm) ═══════════════════════════
+// Pastilles d'identification (1-4 points), barres de contrôle 100,0 mm,
+// cadre carte bancaire 85,60 × 53,98 mm pour vérifier l'échelle d'impression,
+// réglet 170 mm, mouchetis déterministe (LCG) hors zones utiles.
+function scaleMatSVG(){
+  let seed=123456789; const rnd=()=>(seed=seed*16807%2147483647)/2147483647;
+  const el=[];
+  const marks=[[12,20,1],[178,20,2],[12,220,3],[178,220,4]];
+  for(const [x,y,n] of marks){
+    el.push(`<circle cx="${x}" cy="${y}" r="6" fill="none" stroke="#000" stroke-width="1.6"/>`);
+    el.push(`<circle cx="${x}" cy="${y}" r="1.4"/>`);
+    for(let k=0;k<n;k++){ const a=-Math.PI/2+k*Math.PI/3;
+      el.push(`<circle cx="${(x+3.6*Math.cos(a)).toFixed(2)}" cy="${(y+3.6*Math.sin(a)).toFixed(2)}" r="0.9"/>`); }
+  }
+  // barre horizontale 100,0 mm
+  el.push(`<line x1="45" y1="20" x2="145" y2="20" stroke="#000" stroke-width="0.8"/>`,
+          `<line x1="45" y1="16.5" x2="45" y2="23.5" stroke="#000" stroke-width="0.8"/>`,
+          `<line x1="145" y1="16.5" x2="145" y2="23.5" stroke="#000" stroke-width="0.8"/>`);
+  for(let x=55;x<145;x+=10) el.push(`<line x1="${x}" y1="18.5" x2="${x}" y2="21.5" stroke="#000" stroke-width="0.4"/>`);
+  el.push(`<text x="95" y="13.5" font-size="3.6" text-anchor="middle">barre de contrôle : 100,0 mm exactement</text>`);
+  // barre verticale 100,0 mm
+  el.push(`<line x1="22" y1="60" x2="22" y2="160" stroke="#000" stroke-width="0.8"/>`,
+          `<line x1="18.5" y1="60" x2="25.5" y2="60" stroke="#000" stroke-width="0.8"/>`,
+          `<line x1="18.5" y1="160" x2="25.5" y2="160" stroke="#000" stroke-width="0.8"/>`,
+          `<text x="16" y="112" font-size="3.2" text-anchor="middle" transform="rotate(-90 16 112)">100,0 mm</text>`);
+  // zone objet
+  el.push(`<rect x="55" y="80" width="80" height="85" fill="none" stroke="#000" stroke-width="0.5" stroke-dasharray="3 2.5"/>`,
+          `<text x="95" y="120" font-size="4.2" text-anchor="middle" fill="#777">pose l'objet ici</text>`,
+          `<text x="95" y="126" font-size="3" text-anchor="middle" fill="#777">(centré, planche bien à plat)</text>`);
+  el.push(`<text x="95" y="172.5" font-size="3" text-anchor="middle">distance entre centres de pastilles : 166,0 mm (horizontale) · 200,0 mm (verticale)</text>`);
+  // cadre carte bancaire
+  el.push(`<rect x="52.2" y="178" width="85.6" height="53.98" rx="3" fill="none" stroke="#000" stroke-width="0.7"/>`,
+          `<text x="95" y="207" font-size="3.2" text-anchor="middle" fill="#777">une carte bancaire doit couvrir exactement ce cadre</text>`);
+  // réglet 0–170 mm
+  el.push(`<line x1="10" y1="236" x2="180" y2="236" stroke="#000" stroke-width="0.5"/>`);
+  for(let x=0;x<=170;x+=5){
+    const X=10+x, h=x%10===0?4:2.2;
+    el.push(`<line x1="${X}" y1="236" x2="${X}" y2="${(236-h).toFixed(1)}" stroke="#000" stroke-width="0.35"/>`);
+    if(x%20===0) el.push(`<text x="${X}" y="239.6" font-size="2.6" text-anchor="middle">${x}</text>`);
+  }
+  // mouchetis hors zones utiles
+  const EX=[[38,8,152,26],[50,74,140,170],[44,170,146,235],[12,54,30,166],[0,228,190,240],[0,0,190,8]];
+  const nearMark=(x,y)=>marks.some(([mx,my])=>Math.hypot(x-mx,y-my)<10.5);
+  for(let i=0;i<560;i++){
+    const x=6+rnd()*178, y=10+rnd()*222;
+    if(nearMark(x,y)||EX.some(([a,b,c,d])=>x>a&&x<c&&y>b&&y<d)) continue;
+    el.push(`<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${(0.5+rnd()*1.1).toFixed(2)}"/>`);
+  }
+  el.push(`<text x="95" y="5.5" font-size="3.3" text-anchor="middle" font-weight="bold">3D PRINT CHECKER — PLANCHE PHOTOGRAMMÉTRIE · A4 · imprimer à 100 % (jamais « ajuster à la page »)</text>`);
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="190mm" height="240mm" viewBox="0 0 190 240" fill="#000" font-family="Arial,Helvetica,sans-serif">${el.join('')}</svg>`;
+}
+const MATSVG=scaleMatSVG();
+$('matpreview').innerHTML=MATSVG;
+$('scalemat').innerHTML=MATSVG;
+$('printmat').onclick=()=>{ document.body.classList.add('print-mat'); window.print(); };
+addEventListener('afterprint',()=>document.body.classList.remove('print-mat'));
+
 // petite API de debug/power-users (console) — volontairement exposée
 window.PrintChecker={gParse,gPauseBlock,gApply,gEdits,gSafety,
   get _3d(){ return {data:G3D, viewer:g3r}; }};
