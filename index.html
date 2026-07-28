@@ -1,7 +1,7 @@
 <!doctype html><html lang="fr"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>3D Print Checker — coût, fabricabilité, pause G-code, gratuit</title>
-<meta name="description" content="Analyse gratuite d'un fichier 3D (STL, OBJ, 3MF, PLY, GLTF/GLB, FBX, DAE, OFF, AMF) : volume, poids, temps, coût d'impression et risques de fabrication. Boîte à outils G-code : insérer une pause ou un changement de filament (M600) à la couche de ton choix, stats et aperçu des couches. Sans compte, sans inscription.">
+<title>3D Print Checker — contrôle prévol : analyse 3D, sécurité G-code, pause — gratuit</title>
+<meta name="description" content="Le contrôle prévol gratuit de tes impressions 3D : analyse du modèle (volume, poids, coût, surplombs), contrôle de sécurité du G-code (mouvements hors plateau, extrusion à froid, chauffages non coupés, compatibilité firmware), pause ou changement de filament (M600) à la couche choisie, température et ventilation par plage de couches. 100 % dans le navigateur, sans compte.">
 <style>
 :root{
   --bg:#000; --bg1:#0a0a0c; --card:#1c1c1e; --card2:#212123;
@@ -87,6 +87,11 @@ input[type=text].gtxt{width:100%;background:#141416;color:var(--txt);border:.5px
 .gplan{margin-top:14px;font-size:13px;color:var(--dim);background:var(--card2);border-radius:12px;padding:12px 14px;line-height:1.65;}
 .gplan b{color:var(--txt);}
 .gnote{margin-top:14px;font-size:12.5px;color:var(--dim2);line-height:1.55;}
+.oprow{display:flex;gap:8px;align-items:center;font-size:12px;color:var(--dim2);flex-wrap:wrap;}
+.oprow input.gtxt{width:64px;}
+.opline{margin-top:8px;font-size:12.5px;color:var(--dim);background:var(--card2);border-radius:8px;padding:6px 10px;}
+.opline a{color:var(--red);font-size:11px;margin-left:8px;}
+#gverdict{margin-left:10px;vertical-align:middle;font-size:12px;}
 #s-elec{margin-top:10px;font-size:12.5px;color:var(--dim2);}
 
 footer{text-align:center;color:var(--dim2);font-size:12px;margin-top:34px;line-height:1.7;}
@@ -120,7 +125,7 @@ footer .disc{max-width:640px;margin:0 auto 10px;}
 <div class="wrap">
   <header>
     <h1><span class="g">3D Print Checker</span></h1>
-    <div class="sub">Dépose un fichier 3D — STL, OBJ, 3MF, PLY, GLTF/GLB, FBX, DAE, OFF, AMF — : coût matière, temps, poids, dimensions et <b>risques de fabrication</b> (surplombs, orientation, tenue plateau) — en quelques secondes. Et en bas de page : la <b>boîte à outils G-code</b> pour insérer une pause ou un changement de filament à la couche de ton choix.</div>
+    <div class="sub">Le <b>contrôle prévol</b> de tes impressions 3D. Dépose un fichier 3D — STL, OBJ, 3MF, PLY, GLTF/GLB, FBX, DAE, OFF, AMF — : coût, temps, poids et <b>risques de fabrication</b>. Puis passe ton <b>G-code</b> au contrôle de sécurité (hors plateau, extrusion à froid, chauffages, firmware) et modifie-le : pause, changement de filament, température ou ventilation par plage de couches.</div>
     <span class="free">100 % gratuit · aucun compte · rien n'est envoyé (tout se calcule dans ton navigateur)</span>
   </header>
 
@@ -183,7 +188,7 @@ footer .disc{max-width:640px;margin:0 auto 10px;}
 
   <!-- ── BOÎTE À OUTILS G-CODE ─────────────────────────────────────────── -->
   <h2 class="sechead"><span class="g">Boîte à outils G-code</span></h2>
-  <div class="secsub">Insère une <b>pause</b> ou un <b>changement de filament</b> à la couche exacte de ton choix — pour glisser un aimant, un écrou, ou changer de couleur. 100 % local, ton G-code ne quitte pas le navigateur.</div>
+  <div class="secsub">Analyse ton G-code, passe-le au <b>contrôle de sécurité prévol</b> (hors plateau, extrusion à froid, chauffages, firmware), puis modifie-le : <b>pause</b>, <b>changement de filament</b>, <b>température ou ventilation par plage de couches</b>. 100 % local, ton G-code ne quitte pas le navigateur.</div>
 
   <div class="grid">
     <!-- LEFT : gcode upload + stats + layer preview -->
@@ -216,29 +221,56 @@ footer .disc{max-width:640px;margin:0 auto 10px;}
 
     <!-- RIGHT : pause insertion -->
     <div class="card">
-      <h2>5 · Insérer une pause / changement de filament</h2>
+      <h2>5 · Modifier : pause, filament, températures</h2>
       <div class="ctrls" style="margin-top:0">
-        <div class="fld" style="grid-column:1/-1"><label>Type de pause (selon ton firmware)</label>
+        <div class="fld" style="grid-column:1/-1"><label>Firmware de la machine — <b>obligatoire</b> avant modification (les commandes valides en dépendent)</label>
+          <select id="gfw">
+            <option value="" selected>— sélectionne le firmware —</option>
+            <option value="marlin_ap">Marlin + ADVANCED_PAUSE (M600 actif — la plupart des Ender/Creality récentes)</option>
+            <option value="marlin">Marlin générique (sans M600)</option>
+            <option value="prusa">Prusa (MK3/MK4)</option>
+            <option value="bambu">Bambu Lab</option>
+            <option value="klipper">Klipper</option>
+            <option value="reprap">RepRapFirmware (Duet)</option>
+          </select></div>
+        <div class="fld" style="grid-column:1/-1"><label>Type de pause</label>
           <select id="gmode">
-            <option value="M600" selected>M600 — changement de filament (Marlin · Prusa · Ender…)</option>
-            <option value="M0">M0 — pause simple avec parcage (Marlin)</option>
-            <option value="M601">M601 — pause (Prusa MK3/MK4)</option>
+            <option value="M600" selected>M600 — changement de filament</option>
+            <option value="M0">M0 — pause simple avec parcage généré ici</option>
+            <option value="M601">M601 — pause (Prusa)</option>
             <option value="M400U1">M400 U1 — pause (Bambu Lab)</option>
+            <option value="M226">M226 — pause (RepRapFirmware)</option>
             <option value="PAUSE">PAUSE — macro (Klipper)</option>
           </select></div>
-        <div class="fld" style="grid-column:1/-1"><label>Couche(s) — la pause s'exécute <b>avant</b> l'impression de la couche indiquée (ex : <span class="layer-lbl">42</span> ou <span class="layer-lbl">30, 60</span>)</label>
+        <div class="fld" style="grid-column:1/-1"><label>Couche(s) de pause — exécutée <b>avant</b> l'impression de la couche indiquée (ex : <span class="layer-lbl">42</span> ou <span class="layer-lbl">30, 60</span>)</label>
           <input type="text" class="gtxt" id="glayers" placeholder="Charge un G-code d'abord" disabled></div>
+        <div class="fld" style="grid-column:1/-1"><label>Température / ventilation par plage de couches (optionnel — valeurs d'origine restaurées en fin de plage)</label>
+          <div class="oprow">
+            de <input type="number" class="gtxt" id="gopA" min="1" placeholder="A">
+            à <input type="number" class="gtxt" id="gopB" min="1" placeholder="B">
+            buse <input type="number" class="gtxt" id="gopT" min="0" max="320" placeholder="°C">
+            vent. <input type="number" class="gtxt" id="gopF" min="0" max="100" placeholder="%">
+            <button class="btn" id="gopAdd">Ajouter</button>
+          </div>
+          <div id="goplist"></div></div>
       </div>
-      <div class="gplan" id="gplan">Charge un G-code (ou l'exemple) pour préparer une pause.</div>
+      <div class="gplan" id="gplan">Charge un G-code (ou l'exemple) pour préparer une modification.</div>
       <div class="export-row">
         <button class="btn pri export" id="gdl" disabled>⬇︎ Télécharger le G-code modifié</button>
+        <button class="btn" id="greset" style="margin-left:8px">Réinitialiser</button>
       </div>
-      <div class="gnote">💡 <b>Insert d'aimant ou d'écrou :</b> dans ton slicer, repère la première couche qui <i>recouvre</i> la cavité, et mets la pause sur cette couche : la pièce s'arrête juste avant de refermer le logement. <b>M600</b> gère seul le parcage et la reprise ; <b>M0</b> ajoute ici un parcage + rétraction et reprend là où il s'était arrêté. Vérifie que ton firmware supporte la commande choisie.</div>
+      <div class="gnote">💡 <b>Insert d'aimant ou d'écrou :</b> repère la première couche qui <i>recouvre</i> la cavité et mets la pause dessus : la pièce s'arrête juste avant de refermer le logement. <b>M600</b>/<b>M601</b>/<b>M400 U1</b>/<b>PAUSE</b> : le firmware gère parcage et reprise. <b>M0</b> : l'outil génère ici rétraction + parcage + reprise exacte. La pause n'est pas universelle — d'où le profil firmware obligatoire (M600 exige <span class="layer-lbl">ADVANCED_PAUSE_FEATURE</span> sous Marlin, <span class="layer-lbl">PAUSE</span> exige la macro Klipper correspondante).</div>
+    </div>
+
+    <!-- FULL WIDTH : safety preflight -->
+    <div class="card" style="grid-column:1/-1">
+      <h2>6 · Contrôle de sécurité prévol <span class="badge" id="gverdict" style="display:none"></span></h2>
+      <div id="gsafety"><div class="empty">Charge un G-code pour lancer le contrôle prévol (hors plateau, homing, extrusion à froid, chauffages, modes G90/G91, compatibilité firmware).</div></div>
     </div>
   </div>
 
   <footer>
-    <div class="disc">Estimations indicatives (débit ~10 mm³/s, modèle coque+remplissage pour le FDM ; nb de couches × cure pour la résine/cire castable) — pas un slicer réel. Le calcul de paroi minimale exacte nécessite un slicing. Import multi-format (OBJ, 3MF, GLTF/GLB, FBX, DAE...) fait entièrement dans ton navigateur — aucun fichier n'est envoyé à un serveur. Les formats CAO paramétriques (STEP, IGES) ne sont pas encore supportés. La boîte à outils G-code lit et modifie ton fichier entièrement en local (rien n'est envoyé) ; vérifie toujours la première impression avec pause à proximité de la machine.</div>
+    <div class="disc">Estimations indicatives (débit ~10 mm³/s, modèle coque+remplissage pour le FDM ; nb de couches × cure pour la résine/cire castable) — pas un slicer réel. Le calcul de paroi minimale exacte nécessite un slicing. Import multi-format (OBJ, 3MF, GLTF/GLB, FBX, DAE...) fait entièrement dans ton navigateur — aucun fichier n'est envoyé à un serveur. Les formats CAO paramétriques (STEP, IGES) ne sont pas encore supportés. La boîte à outils G-code lit et modifie ton fichier entièrement en local (rien n'est envoyé). Le contrôle de sécurité est indicatif : il détecte les erreurs les plus dangereuses mais ne remplace ni ton slicer ni ta vigilance — reste à proximité de la machine pour une première impression modifiée.</div>
     Moteur de calcul dérivé de <b>General Design Studio</b>. · Un outil DELIGNY.
   </footer>
 </div>
@@ -720,11 +752,18 @@ function gParseDuration(str){ // "1d 2h 3m 4s", "2h 3m"… → secondes
 }
 function gParse(text){
   const lines=text.split('\n');
-  const layers=[];   // {idx, z, x, y, e, absXY, absE} — état AVANT la couche
-  const st={x:0,y:0,z:0,e:0,absXY:true,absE:true};
+  const layers=[];   // {idx, z, x, y, e, absXY, absE, tempN, fan} — état AVANT la couche
+  const st={x:0,y:0,z:0,e:0,absXY:true,absE:true,tempN:0,fan:0};
   let markers=false, lastExtrudedZ=null, lastZLineIdx=0;
   const stats={timeS:null,filamentM:null,filamentG:null,nozzle:null,bed:null,slicer:null,maxZ:0};
-  const pushLayer=(idx)=>layers.push({idx, z:null, x:st.x, y:st.y, e:st.e, absXY:st.absXY, absE:st.absE});
+  // Données brutes pour le contrôle prévol — collectées ici (1 seule passe),
+  // évaluées dans gSafety() contre le profil imprimante+firmware choisi.
+  const safe={g28:false, movedBeforeHome:false,
+              minX:1e9,maxX:-1e9,minY:1e9,maxY:-1e9,maxZmove:0,
+              coldE:false, waitNozzle:false, maxNozzleSet:0, maxBedSet:0,
+              endNozzle:0, endBed:0, g91AtEnd:false, filamentMm:0,
+              pauses:{M600:0,M601:0,M0:0,M226:0,PAUSE:0,M400U1:0}};
+  const pushLayer=(idx)=>layers.push({idx, z:null, x:st.x, y:st.y, e:st.e, absXY:st.absXY, absE:st.absE, tempN:st.tempN, fan:st.fan});
   const marker=(i)=>{ if(!markers){ markers=true; layers.length=0; } pushLayer(i); };
   for(let i=0;i<lines.length;i++){
     const raw=lines[i];
@@ -745,27 +784,119 @@ function gParse(text){
       continue;
     }
     const ci=raw.indexOf(';'); const s=ci>=0?raw.slice(0,ci):raw;
+    if(/^\s*(?:N\d+\s+)?PAUSE\b/i.test(s)){ safe.pauses.PAUSE++; continue; } // macro Klipper (pas un code G/M)
     const cmd=gCode(s); if(!cmd) continue;
+    if(cmd==='G28'){ safe.g28=true; continue; }
     const mv=gStep(st,cmd,s);
     if(mv){
+      if(!safe.g28) safe.movedBeforeHome=true;
+      else{
+        if(st.x<safe.minX)safe.minX=st.x; if(st.x>safe.maxX)safe.maxX=st.x;
+        if(st.y<safe.minY)safe.minY=st.y; if(st.y>safe.maxY)safe.maxY=st.y;
+        if(st.z>safe.maxZmove)safe.maxZmove=st.z;
+      }
       if(mv.zc) lastZLineIdx=i;
       if(mv.de>0){
+        safe.filamentMm+=mv.de;
+        if(st.tempN<170) safe.coldE=true;
         if(st.z>stats.maxZ) stats.maxZ=st.z;
         const L=layers[layers.length-1];
         if(L&&L.z==null) L.z=+st.z.toFixed(3);   // couche Cura sans ;Z: → Z du 1er dépôt
         if(!markers && st.z!==lastExtrudedZ){    // fallback sans marqueurs : nouveau Z déposé = nouvelle couche
-          layers.push({idx:lastZLineIdx, z:+st.z.toFixed(3), x:st.x, y:st.y, e:st.e, absXY:st.absXY, absE:st.absE});
+          layers.push({idx:lastZLineIdx, z:+st.z.toFixed(3), x:st.x, y:st.y, e:st.e, absXY:st.absXY, absE:st.absE, tempN:st.tempN, fan:st.fan});
           lastExtrudedZ=st.z;
         }
       }
       continue;
     }
     if(mv===undefined){
-      if((cmd==='M104'||cmd==='M109') && stats.nozzle==null){ const p=gParams(s); if(p.S) stats.nozzle=p.S; }
-      else if((cmd==='M140'||cmd==='M190') && stats.bed==null){ const p=gParams(s); if(p.S) stats.bed=p.S; }
+      const p=gParams(s);
+      switch(cmd){
+        case 'M104': case 'M109':
+          if(p.S!=null){ st.tempN=p.S; safe.endNozzle=p.S;
+            if(stats.nozzle==null&&p.S>0) stats.nozzle=p.S;
+            if(p.S>safe.maxNozzleSet) safe.maxNozzleSet=p.S;
+            if(cmd==='M109'&&p.S>0) safe.waitNozzle=true; }
+          break;
+        case 'M140': case 'M190':
+          if(p.S!=null){ safe.endBed=p.S;
+            if(stats.bed==null&&p.S>0) stats.bed=p.S;
+            if(p.S>safe.maxBedSet) safe.maxBedSet=p.S; }
+          break;
+        case 'M106': st.fan=p.S!=null?p.S:255; break;
+        case 'M107': st.fan=0; break;
+        case 'M600': safe.pauses.M600++; break;
+        case 'M601': safe.pauses.M601++; break;
+        case 'M226': safe.pauses.M226++; break;
+        case 'M0': safe.pauses.M0++; break;
+        case 'M400': if(/U1/i.test(s)) safe.pauses.M400U1++; break;
+      }
     }
   }
-  return {lines, layers, stats, markers};
+  safe.g91AtEnd=!st.absXY;
+  return {lines, layers, stats, safe, markers};
+}
+
+// ── Profils firmware : commandes de pause réellement disponibles ────────────
+// M600 n'existe sous Marlin que si ADVANCED_PAUSE_FEATURE est compilé ;
+// PAUSE n'existe sous Klipper que si [pause_resume]/macro sont configurés.
+// D'où : profil OBLIGATOIRE avant toute modification.
+const FIRMWARES={
+  marlin_ap:{name:'Marlin + ADVANCED_PAUSE', pause:['M600','M0','M226']},
+  marlin:   {name:'Marlin générique',        pause:['M0','M226']},
+  prusa:    {name:'Prusa (MK3/MK4)',         pause:['M601','M600','M0']},
+  bambu:    {name:'Bambu Lab',               pause:['M400U1']},
+  klipper:  {name:'Klipper',                 pause:['PAUSE','M600']}, // M600 = macro à définir
+  reprap:   {name:'RepRapFirmware (Duet)',   pause:['M226','M0']},
+};
+const GMODE_LABEL=m=>m==='M400U1'?'M400 U1':m;
+function gGateModes(){
+  const fw=FIRMWARES[$('gfw').value];
+  [...$('gmode').options].forEach(o=>{ o.disabled = fw ? !fw.pause.includes(o.value) : false; });
+  if(fw && !fw.pause.includes($('gmode').value)) $('gmode').value=fw.pause[0];
+}
+
+// ── Contrôle de sécurité prévol : données gParse × profil machine ───────────
+function gSafety(){
+  if(!GC) return null;
+  const S=GC.safe, rows=[];
+  const pr=PRINTERS[$('printer').value]||PRINTERS.bambu_a1, bed=pr.bed;
+  const fw=FIRMWARES[$('gfw').value]||null;
+  const TOL=5; // mm — les lignes de purge sortent légitimement un peu du plateau
+  if(!S.g28) rows.push(['🚫','warn','Aucun homing (G28) dans le fichier','La machine partirait d\'une position inconnue. Fichier tronqué, ou G-code de test ? À ne pas lancer tel quel.']);
+  else if(S.movedBeforeHome) rows.push(['⚠️','warn','Déplacement avant le homing','Un mouvement est demandé avant le G28 — vérifie le start G-code.']);
+  else rows.push(['✅','ok','Homing avant les mouvements','G28 présent avant tout déplacement.']);
+  if(S.g28 && S.maxX>-1e8){
+    const out=S.minX<-TOL||S.minY<-TOL||S.maxX>bed[0]+TOL||S.maxY>bed[1]+TOL||S.maxZmove>bed[2]+1;
+    if(out) rows.push(['🚫','warn',`Trajectoires hors volume ${bed.join('×')} mm (${pr.name})`,`Enveloppe parcourue : X ${S.minX.toFixed(0)}→${S.maxX.toFixed(0)} · Y ${S.minY.toFixed(0)}→${S.maxY.toFixed(0)} · Z ≤ ${S.maxZmove.toFixed(1)}. Mauvaise imprimante sélectionnée au-dessus, ou fichier tranché pour une autre machine.`]);
+    else rows.push(['✅','ok','Trajectoires dans le volume imprimable',`X ${S.minX.toFixed(0)}→${S.maxX.toFixed(0)} · Y ${S.minY.toFixed(0)}→${S.maxY.toFixed(0)} · Z ≤ ${S.maxZmove.toFixed(1)} mm — plateau ${bed.join('×')} mm (${pr.name}).`]);
+  }
+  if(S.coldE) rows.push(['🚫','warn','Extrusion à froid','De la matière est extrudée avec une consigne buse sous 170 °C — bourrage ou casse d\'extrudeur quasi garantis.']);
+  else rows.push(['✅','ok','Pas d\'extrusion à froid','Consigne buse ≥ 170 °C avant chaque dépôt.']);
+  if(!S.waitNozzle) rows.push(['⚠️','warn','Aucune attente de chauffe (M109)','La température est réglée (M104) mais jamais attendue — l\'impression peut démarrer buse froide selon le firmware.']);
+  if(S.maxNozzleSet>300) rows.push(['⚠️','warn',`Consigne buse très élevée (${S.maxNozzleSet} °C)`,'Au-delà de 300 °C : vérifie hotend tout-métal et capteur adaptés.']);
+  if(S.maxBedSet>120) rows.push(['⚠️','warn',`Consigne plateau très élevée (${S.maxBedSet} °C)`,'>120 °C est inhabituel — vérifie que c\'est voulu.']);
+  if(S.endNozzle>0||S.endBed>0) rows.push(['🚫','warn','Chauffages non coupés en fin de fichier',`Dernières consignes : buse ${S.endNozzle} °C · plateau ${S.endBed} °C — la machine resterait chaude sans surveillance après l'impression.`]);
+  else rows.push(['✅','ok','Chauffages coupés en fin d\'impression','Buse et plateau ramenés à 0 en fin de fichier.']);
+  if(S.g91AtEnd) rows.push(['⚠️','warn','Mode relatif (G91) laissé actif en fin de fichier','Un fichier suivant qui suppose le mode absolu produirait des mouvements imprévisibles.']);
+  const fm=S.filamentMm/1000;
+  if(fm>0.05) rows.push(['ℹ️','ok',`Filament réellement extrudé : ${fm.toFixed(1)} m`,`≈ ${(fm*2.98).toFixed(0)} g en PLA — vérifie qu'il en reste assez sur la bobine avant de lancer.`]);
+  const pl=Object.entries(S.pauses).filter(([,c])=>c>0);
+  if(pl.length){
+    rows.push(['ℹ️','ok','Pauses déjà présentes dans le fichier',pl.map(([k,c])=>`${GMODE_LABEL(k)}×${c}`).join(' · ')]);
+    if(fw){ const bad=pl.filter(([k])=>!fw.pause.includes(k));
+      if(bad.length) rows.push(['⚠️','warn',`Pauses incompatibles avec ${fw.name}`,bad.map(([k])=>GMODE_LABEL(k)).join(', ')+' — ces commandes seraient ignorées ou mal gérées par ce firmware.']); }
+  }
+  if(!fw) rows.push(['⚠️','warn','Firmware non renseigné','La compatibilité des commandes n\'est pas vérifiée — sélectionne le firmware dans le panneau 5.']);
+  const verdict=rows.some(r=>r[0]==='🚫')?['🔴','À CORRIGER']:rows.some(r=>r[1]==='warn')?['🟠','À VÉRIFIER']:['🟢','PRÊT À IMPRIMER'];
+  return {rows, verdict};
+}
+function gRenderSafety(){
+  const el=$('gsafety'), vb=$('gverdict');
+  if(!GC){ el.innerHTML='<div class="empty">Charge un G-code pour lancer le contrôle prévol (hors plateau, homing, extrusion à froid, chauffages, modes G90/G91, compatibilité firmware).</div>'; vb.style.display='none'; return; }
+  const {rows,verdict}=gSafety();
+  vb.style.display='inline-block'; vb.className='badge '+(verdict[0]==='🟢'?'ok':'warn'); vb.textContent=`${verdict[0]} ${verdict[1]}`;
+  el.innerHTML=rows.map(([ic,cl,t,d])=>`<div class="risk ${cl}"><div class="ic">${ic}</div><div class="body"><b>${t}</b><div class="d">${d}</div></div></div>`).join('');
 }
 
 // ── Bloc pause inséré AVANT le début de la couche n (1-based) ───────────────
@@ -793,6 +924,7 @@ function gPauseBlock(mode, n, L){
   const single={ M600:'M600 ; changement de filament — le firmware parque et reprend seul',
                  M601:'M601 ; pause Prusa — parcage gere par le firmware',
                  M400U1:'M400 U1 ; pause Bambu Lab',
+                 M226:'M226 ; pause RepRapFirmware',
                  PAUSE:'PAUSE ; macro Klipper' };
   return [head, single[mode]||'M600', tail];
 }
@@ -804,14 +936,44 @@ function gLayerList(){
     .filter(n=>Number.isInteger(n)&&n>=1&&n<=GC.layers.length&&!seen.has(n)&&seen.add(n))
     .sort((a,b)=>a-b);
 }
-function gApply(){
-  const list=gLayerList();
-  if(!GC||!list.length) return null;
-  const out=GC.lines.slice();
-  for(const n of [...list].reverse()){          // descendant → les index restent valides
+// ── Plages de couches (température / ventilation) ───────────────────────────
+let GOPS=[]; // {a, b, t (°C ou null), f (% ou null)}
+function gRenderOps(){
+  $('goplist').innerHTML=GOPS.map((o,i)=>
+    `<div class="opline">couches ${o.a}→${o.b} : ${[o.t!=null?o.t+' °C':null,o.f!=null?'ventilation '+o.f+' %':null].filter(Boolean).join(' · ')}<a href="#" data-i="${i}" class="opdel">retirer</a></div>`).join('');
+  [...document.querySelectorAll('.opdel')].forEach(a=>a.onclick=e=>{e.preventDefault();GOPS.splice(+a.dataset.i,1);gRenderOps();gRefreshPlan();});
+}
+// Toutes les insertions (pauses + plages), triées par index décroissant pour
+// que les splices ne décalent pas les index suivants. L'original (GC.lines)
+// n'est JAMAIS modifié — le téléchargement est une copie.
+function gEdits(){
+  if(!GC) return [];
+  const edits=[];
+  for(const n of gLayerList()){
     const L=GC.layers[n-1];
-    out.splice(L.idx, 0, ...gPauseBlock($('gmode').value, n, L));
+    edits.push({idx:L.idx, lines:gPauseBlock($('gmode').value,n,L)});
   }
+  for(const o of GOPS){
+    const A=GC.layers[o.a-1]; if(!A) continue;
+    const set=[`; >>> 3D PRINT CHECKER — plage couches ${o.a}→${o.b} <<<`];
+    if(o.t!=null) set.push(`M104 S${o.t} ; temperature de plage`);
+    if(o.f!=null) set.push(o.f>0?`M106 S${Math.round(o.f*2.55)} ; ventilation de plage`:'M107 ; ventilation coupee');
+    edits.push({idx:A.idx, lines:set});
+    const R=GC.layers[o.b]; // début de la couche b+1 = fin de plage
+    if(R){
+      const back=['; >>> 3D PRINT CHECKER — fin de plage, retour aux valeurs d\'origine <<<'];
+      if(o.t!=null) back.push(`M104 S${R.tempN} ; temperature d'origine`);
+      if(o.f!=null) back.push(R.fan>0?`M106 S${Math.round(R.fan)} ; ventilation d'origine`:'M107 ; ventilation d\'origine (coupee)');
+      edits.push({idx:R.idx, lines:back});
+    }
+  }
+  return edits.sort((x,y)=>y.idx-x.idx);
+}
+function gApply(){
+  const edits=gEdits();
+  if(!GC||!edits.length) return null;
+  const out=GC.lines.slice();
+  for(const e of edits) out.splice(e.idx,0,...e.lines);
   return out.join('\n');
 }
 
@@ -854,13 +1016,23 @@ function gDraw(n){
 function gFmtTime(sec){ if(!sec) return '—'; const hh=Math.floor(sec/3600), mm=Math.round(sec%3600/60); return hh?`${hh} h ${mm.toString().padStart(2,'0')}`:`${mm} min`; }
 function gRefreshPlan(){
   const plan=$('gplan'), dl=$('gdl');
-  if(!GC){ plan.textContent='Charge un G-code (ou l\'exemple) pour préparer une pause.'; dl.disabled=true; dl.classList.remove('ready'); return; }
-  const list=gLayerList();
-  if(!list.length){ plan.innerHTML='Indique au moins une couche valide (1 à '+GC.layers.length+').'; dl.disabled=true; dl.classList.remove('ready'); return; }
-  const mode=$('gmode').value;
-  plan.innerHTML=`<b>${list.length} pause${list.length>1?'s':''}</b> — mode <b>${mode==='M400U1'?'M400 U1':mode}</b> :<br>`+
-    list.map(n=>{ const L=GC.layers[n-1]; return `· avant la couche <b>${n}</b> (Z ≈ ${L.z!=null?L.z.toFixed(2):'?'} mm)`; }).join('<br>');
-  dl.disabled=false; dl.classList.add('ready');
+  const off=msg=>{ plan.innerHTML=msg; dl.disabled=true; dl.classList.remove('ready'); };
+  if(!GC) return off('Charge un G-code (ou l\'exemple) pour préparer une modification.');
+  const fwKey=$('gfw').value;
+  if(!fwKey) return off('⚠️ <b>Sélectionne d\'abord le firmware de ta machine</b> — obligatoire : les commandes de pause ne sont pas universelles (M600, PAUSE… dépendent du firmware et de sa configuration).');
+  const fw=FIRMWARES[fwKey], list=gLayerList(), mode=$('gmode').value;
+  if(!list.length&&!GOPS.length) return off('Indique au moins une couche de pause (1 à '+GC.layers.length+') ou ajoute une plage de modification.');
+  let html='';
+  if(list.length)
+    html+=`<b>${list.length} pause${list.length>1?'s':''}</b> — mode <b>${GMODE_LABEL(mode)}</b> · ${fw.name} :<br>`+
+      list.map(n=>{ const L=GC.layers[n-1]; return `· avant la couche <b>${n}</b> (Z ≈ ${L.z!=null?L.z.toFixed(2):'?'} mm)`; }).join('<br>');
+  if(GOPS.length)
+    html+=(html?'<br>':'')+`<b>${GOPS.length} plage${GOPS.length>1?'s':''} modifiée${GOPS.length>1?'s':''}</b> : `+
+      GOPS.map(o=>`${o.a}→${o.b}`).join(' · ');
+  const nIns=gEdits().reduce((s,e)=>s+e.lines.length,0);
+  html+=`<br><span style="color:var(--dim2)">${nIns} lignes insérées · 0 supprimée — l'original n'est jamais touché, le téléchargement est une copie.</span>`;
+  if(fwKey==='klipper'&&mode==='M600') html+='<br><span style="color:var(--amber)">⚠️ M600 sous Klipper suppose une macro [gcode_macro M600] définie dans ta config.</span>';
+  plan.innerHTML=html; dl.disabled=false; dl.classList.add('ready');
 }
 function gShowStats(){
   const s=GC.stats;
@@ -879,11 +1051,17 @@ function gLoadText(text, name){
   GCNAME=name.replace(/\.(gcode|gco|g|nc|txt)$/i,'');
   GC=gParse(text);
   if(!GC.layers.length){ alert('Aucune couche détectée dans ce fichier — est-ce bien un G-code d\'impression 3D ?'); GC=null; return; }
+  GOPS=[]; gRenderOps();
   gShowStats();
   const sl=$('gslider'); sl.disabled=false; sl.max=GC.layers.length;
   sl.value=Math.min(GC.layers.length, Math.max(2, Math.ceil(GC.layers.length/2)));
   const inp=$('glayers'); inp.disabled=false; inp.placeholder='ex : 42 ou 30, 60'; inp.value=sl.value;
-  gSync();
+  // pré-sélection du firmware quand le slicer le trahit sans ambiguïté — reste modifiable
+  const sl2=(GC.stats.slicer||'').toLowerCase();
+  if(sl2.includes('bambu')) $('gfw').value='bambu';
+  else if(sl2.includes('prusa')) $('gfw').value='prusa';
+  gGateModes();
+  gSync(); gRenderSafety();
 }
 function gSync(){
   const n=+$('gslider').value;
@@ -893,12 +1071,35 @@ function gSync(){
 $('gslider').addEventListener('input',()=>{ $('glayers').value=$('gslider').value; gSync(); });
 $('glayers').addEventListener('input',()=>{ const l=gLayerList(); if(l.length) $('gslider').value=l[0]; gSync(); });
 $('gmode').addEventListener('input',gRefreshPlan);
+$('gfw').addEventListener('input',()=>{ gGateModes(); gRefreshPlan(); gRenderSafety(); });
+$('printer').addEventListener('input',gRenderSafety); // les bornes hors-plateau dépendent du plateau choisi
+$('gopAdd').onclick=()=>{
+  if(!GC){ alert('Charge un G-code d\'abord.'); return; }
+  const a=parseInt($('gopA').value,10), b=$('gopB').value===''?a:parseInt($('gopB').value,10);
+  const t=$('gopT').value===''?null:+$('gopT').value;
+  const f=$('gopF').value===''?null:+$('gopF').value;
+  if(!Number.isInteger(a)||a<1||!Number.isInteger(b)||b<a||b>GC.layers.length){ alert(`Plage invalide (couches 1 à ${GC.layers.length}, A ≤ B).`); return; }
+  if(t==null&&f==null){ alert('Indique au moins une température ou une ventilation.'); return; }
+  if(t!=null&&(t<0||t>320)){ alert('Température hors limites (0–320 °C).'); return; }
+  if(f!=null&&(f<0||f>100)){ alert('Ventilation en % (0 à 100).'); return; }
+  GOPS.push({a,b,t,f});
+  $('gopA').value=$('gopB').value=$('gopT').value=$('gopF').value='';
+  gRenderOps(); gRefreshPlan();
+};
+$('greset').onclick=()=>{
+  GOPS=[]; gRenderOps();
+  if(GC){ $('glayers').value=$('gslider').value; }
+  gRefreshPlan();
+};
 $('gdl').onclick=()=>{
   const txt=gApply(); if(txt==null) return;
   const list=gLayerList();
+  const parts=[GCNAME];
+  if(list.length) parts.push(`pause_L${list.join('-')}`);
+  if(GOPS.length) parts.push(`plages${GOPS.length}`);
   const a=document.createElement('a');
   a.href=URL.createObjectURL(new Blob([txt],{type:'text/x-gcode'}));
-  a.download=`${GCNAME}_pause_L${list.join('-')}.gcode`;
+  a.download=parts.join('_')+'.gcode';
   a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),5000);
 };
 async function gLoadFile(f){
@@ -942,7 +1143,7 @@ function gDemoText(){
 }
 $('gdemo').onclick=()=>gLoadText(gDemoText(),'exemple-cube.gcode');
 // petite API de debug/power-users (console) — volontairement exposée
-window.PrintChecker={gParse,gPauseBlock,gApply};
+window.PrintChecker={gParse,gPauseBlock,gApply,gEdits,gSafety};
 
 // init
 sizeView(); frame();
