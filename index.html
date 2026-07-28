@@ -1,7 +1,7 @@
 <!doctype html><html lang="fr"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>3D Print Checker — contrôle prévol : analyse 3D, sécurité G-code, pause — gratuit</title>
-<meta name="description" content="Le contrôle prévol gratuit de tes impressions 3D : analyse du modèle (volume, poids, coût, surplombs), aperçu 3D des trajectoires G-code coloré par type, contrôle de sécurité du G-code (mouvements hors plateau, extrusion à froid, chauffages non coupés, compatibilité firmware), pause ou changement de filament (M600) à la couche choisie, température et ventilation par plage de couches. 100 % dans le navigateur, sans compte.">
+<meta name="description" content="Le contrôle prévol gratuit de tes impressions 3D : score de santé du maillage /100 (trous, non-manifold, normales), analyse du modèle (volume, poids, coût, surplombs), aperçu 3D des trajectoires G-code, contrôle de sécurité (hors plateau, extrusion à froid, débit volumique, refroidissement, chauffages, firmware), pause ou changement de filament (M600) à la couche choisie, passeport d'impression SHA-256. 100 % dans le navigateur, sans compte.">
 <style>
 :root{
   --bg:#000; --bg1:#0a0a0c; --card:#1c1c1e; --card2:#212123;
@@ -315,6 +315,8 @@ footer .disc{max-width:640px;margin:0 auto 10px;}
     <div><b>Date :</b> <span id="r-date"></span></div>
     <div><b>Machine :</b> <span id="r-printer"></span></div>
     <div><b>Matériau :</b> <span id="r-material"></span></div>
+    <div><b>SHA-256 :</b> <span id="r-hash"></span></div>
+    <div><b>Maillage :</b> <span id="r-mesh"></span></div>
   </div>
   <div class="r-conf" id="r-confidence"></div>
   <div class="r-stats" id="r-stats"></div>
@@ -364,12 +366,14 @@ const MATERIALS = Object.assign({}, ...MATERIAL_GROUPS.map(g=>g.items));
 // `watts` = consommation moyenne en régime d'impression (ordre de grandeur constaté,
 // pas la puissance crête de l'alim) — sert au coût électricité indicatif.
 const PRINTER_GROUPS = [
+  // `flow` = débit volumique max soutenable du hotend (mm³/s, ordre de grandeur
+  // constructeur) — sert au contrôle prévol du G-code.
   { label:"FDM (filament)", items:{
-    bambu_a1:    { name:"Bambu Lab A1",      bed:[256,256,256], watts:95 },
-    bambu_a1mini:{ name:"Bambu Lab A1 mini", bed:[180,180,180], watts:80 },
-    prusa_mk4:   { name:"Prusa MK4",         bed:[250,210,220], watts:105 },
-    ender3:      { name:"Creality Ender-3",  bed:[220,220,250], watts:120 },
-    x1c:         { name:"Bambu Lab X1C",     bed:[256,256,256], watts:140 },
+    bambu_a1:    { name:"Bambu Lab A1",      bed:[256,256,256], watts:95,  flow:28 },
+    bambu_a1mini:{ name:"Bambu Lab A1 mini", bed:[180,180,180], watts:80,  flow:28 },
+    prusa_mk4:   { name:"Prusa MK4",         bed:[250,210,220], watts:105, flow:23 },
+    ender3:      { name:"Creality Ender-3",  bed:[220,220,250], watts:120, flow:12 },
+    x1c:         { name:"Bambu Lab X1C",     bed:[256,256,256], watts:140, flow:32 },
   }},
   { label:"Résine (SLA/DLP, format bijouterie)", items:{
     photon_mono: { name:"Anycubic Photon Mono", bed:[130,80,165], watts:45 },
@@ -594,6 +598,74 @@ function risks(g, est){
   return R;
 }
 
+// ── Santé du maillage : score /100 (topologie, pas de réparation ici) ───────
+// Soudure des sommets (arrondi 1 µm×1000 = 0,001 unité) puis analyse d'arêtes :
+// ouvertes (trous), non-manifold (>2 faces), winding incohérent (normales),
+// triangles dégénérés, faces dupliquées, coques disjointes (union-find).
+let MH=null;
+function meshHealth(tris){
+  const vmap=new Map(), verts=[], idx=[];
+  const key=p=>`${Math.round(p[0]*1000)},${Math.round(p[1]*1000)},${Math.round(p[2]*1000)}`;
+  for(const t of tris) for(const p of t){
+    const k=key(p); let i=vmap.get(k);
+    if(i===undefined){ i=verts.length; verts.push(p); vmap.set(k,i); }
+    idx.push(i);
+  }
+  const nF=tris.length;
+  let deg=0, dupF=0;
+  const faceSeen=new Set();
+  const edges=new Map(); // clé = lo*2^26+hi → {c: nb de faces, d: somme des sens}
+  const parent=new Int32Array(verts.length); for(let i=0;i<parent.length;i++) parent[i]=i;
+  const used=new Uint8Array(verts.length);
+  const find=i=>{ while(parent[i]!==i){ parent[i]=parent[parent[i]]; i=parent[i]; } return i; };
+  for(let f=0;f<nF;f++){
+    const a=idx[f*3],b=idx[f*3+1],c=idx[f*3+2];
+    if(a===b||b===c||a===c){ deg++; continue; }
+    const A=verts[a],B=verts[b],C=verts[c];
+    const ux=B[0]-A[0],uy=B[1]-A[1],uz=B[2]-A[2],vx=C[0]-A[0],vy=C[1]-A[1],vz=C[2]-A[2];
+    if(Math.hypot(uy*vz-uz*vy,uz*vx-ux*vz,ux*vy-uy*vx)/2<1e-6){ deg++; continue; }
+    const fk=(a<b?(b<c?`${a},${b},${c}`:(a<c?`${a},${c},${b}`:`${c},${a},${b}`)):(a<c?`${b},${a},${c}`:(b<c?`${b},${c},${a}`:`${c},${b},${a}`)));
+    if(faceSeen.has(fk)) dupF++; else faceSeen.add(fk);
+    used[a]=used[b]=used[c]=1;
+    for(const [p,q] of [[a,b],[b,c],[c,a]]){
+      const lo=p<q?p:q, hi=p<q?q:p, k=lo*67108864+hi;
+      let e=edges.get(k); if(!e){ e={c:0,d:0}; edges.set(k,e); }
+      e.c++; e.d+=(p===lo?1:-1);
+      const rp=find(p),rq=find(q); if(rp!==rq) parent[rp]=rq;
+    }
+  }
+  let open=0,nm=0,badDir=0;
+  for(const e of edges.values()){
+    if(e.c===1) open++;
+    else if(e.c>2) nm++;
+    else if(e.d!==0) badDir++;
+  }
+  const roots=new Set(); for(let i=0;i<verts.length;i++) if(used[i]) roots.add(find(i));
+  const shells=roots.size||1;
+  let score=100;
+  if(open)   score-=Math.min(35, 8+Math.round(6*Math.log10(1+open)));
+  if(nm)     score-=Math.min(25, 6+Math.round(5*Math.log10(1+nm)));
+  if(badDir) score-=Math.min(15, 5+Math.round(4*Math.log10(1+badDir)));
+  if(deg)    score-=Math.min(10, 2+Math.round(3*Math.log10(1+deg)));
+  if(dupF)   score-=Math.min(8,  2+Math.round(3*Math.log10(1+dupF)));
+  return {score:Math.max(0,score), open, nm, badDir, deg, dupF, shells, watertight:open===0&&nm===0};
+}
+function meshRows(m){
+  const R=[];
+  R.push([m.score>=90?'✅':'⚠️', m.score>=90?'ok':'warn',
+    `Santé du maillage : ${m.score}/100${m.watertight?' — étanche':''}`,
+    m.score>=90
+      ? (m.shells>1?`Maillage propre, ${m.shells} coques distinctes (normal pour un assemblage).`:'Étanche, orienté, une seule coque — prêt à trancher.')
+      : 'Répare avant de trancher (fonction « Réparer » de PrusaSlicer/Orca, ou 3D Builder) — un maillage douteux produit un tranchage imprévisible.']);
+  const pl=n=>n>1?'s':'';
+  if(m.open)   R.push(['⚠️','warn',`${m.open} arête${pl(m.open)} ouverte${pl(m.open)} (trous dans la surface)`,'La surface n\'est pas fermée : le slicer devra deviner où est l\'intérieur.']);
+  if(m.nm)     R.push(['⚠️','warn',`${m.nm} arête${pl(m.nm)} non-manifold`,'Plus de 2 faces partagent la même arête — géométrie ambiguë.']);
+  if(m.badDir) R.push(['⚠️','warn',`${m.badDir} paire${pl(m.badDir)} de faces mal orientées`,'Normales incohérentes (faces retournées) — trous ou sur-extrusion au tranchage.']);
+  if(m.deg)    R.push(['⚠️','warn',`${m.deg} triangle${pl(m.deg)} dégénéré${pl(m.deg)}`,'Surface quasi nulle — artefacts d\'export, à nettoyer.']);
+  if(m.dupF)   R.push(['⚠️','warn',`${m.dupF} face${pl(m.dupF)} dupliquée${pl(m.dupF)}`,'Doublons exacts superposés.']);
+  return R;
+}
+
 // ── Rendu 3D (three.js CDN — page publique standalone) ──────────────────────
 const vel=$('view');
 const renderer=new THREE.WebGLRenderer({antialias:true,alpha:true});
@@ -630,19 +702,26 @@ function showMesh(tris){
 }
 
 // ── Pipeline : charger → analyser → afficher ────────────────────────────────
-let G=null, RAW=null, curFileName='Modèle 3D';
+let G=null, RAW=null, curFileName='Modèle 3D', MODELHASH=null;
+async function sha256hex(data){
+  const buf=typeof data==='string'?new TextEncoder().encode(data):data;
+  const h=await crypto.subtle.digest('SHA-256',buf);
+  return [...new Uint8Array(h)].map(b=>b.toString(16).padStart(2,'0')).join('');
+}
 function scaleTris(tris, factor){
   if(factor===1) return tris;
   return tris.map(t=>t.map(p=>[p[0]*factor,p[1]*factor,p[2]*factor]));
 }
 function run(tris){
   if(!tris||tris.length<1){ alert("Fichier illisible ou vide (aucun triangle exploitable)."); return; }
-  RAW=tris; showMesh(tris); update();
+  RAW=tris; MH=null; showMesh(tris); update();
 }
 function update(){
   if(!RAW) return;
   const factor=UNIT_FACTORS[$('unit').value]||1;
-  G=analyze(scaleTris(RAW, factor));
+  const scaled=scaleTris(RAW, factor);
+  G=analyze(scaled);
+  if(!MH||MH._f!==factor){ MH=meshHealth(scaled); MH._f=factor; } // topologie : recalcul seulement si le fichier/l'unité change
   const est=estimate(G,$('printer').value,$('material').value,+$('infill').value,+$('wall').value);
   const s=G.size.map(x=>Math.round(x));
   $('s-dim').innerHTML=`${s[0]}×${s[1]}×${s[2]}<small> mm</small>`;
@@ -659,7 +738,7 @@ function update(){
   } else {
     note.style.display='none';
   }
-  const R=risks(G,est);
+  const R=[...(MH?meshRows(MH):[]), ...risks(G,est)];
   $('risks').innerHTML=R.map(([ic,cl,t,d])=>`<div class="risk ${cl}"><div class="ic">${ic}</div><div class="body"><b>${t}</b><div class="d">${d}</div></div></div>`).join('');
   const exp=$('export'); exp.disabled=false; exp.classList.add('ready');
 }
@@ -673,13 +752,15 @@ function confidence(R){
 function buildReport(){
   if(!G) return;
   const est=estimate(G,$('printer').value,$('material').value,+$('infill').value,+$('wall').value);
-  const R=risks(G,est);
+  const R=[...(MH?meshRows(MH):[]), ...risks(G,est)];
   const [emoji,label]=confidence(R);
   const pr=PRINTERS[$('printer').value]||PRINTERS.bambu_a1, mat=MATERIALS[$('material').value]||MATERIALS.PLA;
   $('r-project').textContent=curFileName;
   $('r-date').textContent=new Date().toLocaleDateString('fr-FR');
   $('r-printer').textContent=pr.name;
   $('r-material').textContent=mat.label;
+  $('r-hash').textContent=MODELHASH?MODELHASH.slice(0,24)+'…':'— (démo intégrée)';
+  $('r-mesh').textContent=MH?`${MH.score}/100${MH.watertight?' · étanche':''}`:'—';
   $('r-confidence').textContent=`${emoji} ${label}`;
   const s=G.size.map(x=>Math.round(x));
   $('r-stats').innerHTML=[
@@ -709,6 +790,8 @@ async function loadFile(f){
   const dz=$('drop'); const prevText=dz.querySelector('.t').textContent;
   dz.querySelector('.t').textContent='Lecture en cours…';
   try{
+    MODELHASH=null;
+    sha256hex(await f.arrayBuffer()).then(h=>{ MODELHASH=h; }); // empreinte pour le passeport/rapport
     const { ext, tris } = await parseByExtension(f);
     $('unit').value = DEFAULT_UNIT[ext] || 'mm';
     $('unithint').textContent = `— détecté "${ext.toUpperCase()}", ajuste si les dimensions semblent fausses`;
@@ -766,6 +849,7 @@ function gStep(st, cmd, s){
   if(cmd==='G92'){ const p=gParams(s); if(p.E!=null)st.e=p.E; if(p.X!=null)st.x=p.X; if(p.Y!=null)st.y=p.Y; if(p.Z!=null)st.z=p.Z; return null; }
   if(cmd==='G0'||cmd==='G1'||cmd==='G2'||cmd==='G3'){
     const p=gParams(s), px=st.x, py=st.y;
+    if(p.F!=null) st.f=p.F;                   // vitesse (mm/min), persiste entre lignes
     if(p.X!=null) st.x = st.absXY ? p.X : st.x+p.X;
     if(p.Y!=null) st.y = st.absXY ? p.Y : st.y+p.Y;
     const zc = p.Z!=null; if(zc) st.z = st.absXY ? p.Z : st.z+p.Z;
@@ -782,15 +866,18 @@ function gParseDuration(str){ // "1d 2h 3m 4s", "2h 3m"… → secondes
 function gParse(text){
   const lines=text.split('\n');
   const layers=[];   // {idx, z, x, y, e, absXY, absE, tempN, fan} — état AVANT la couche
-  const st={x:0,y:0,z:0,e:0,absXY:true,absE:true,tempN:0,fan:0};
+  const st={x:0,y:0,z:0,e:0,f:0,absXY:true,absE:true,tempN:0,fan:0};
   let markers=false, lastExtrudedZ=null, lastZLineIdx=0;
   const stats={timeS:null,filamentM:null,filamentG:null,nozzle:null,bed:null,slicer:null,maxZ:0};
+  const layerTimes=[]; // secondes cinématiques par couche (distance / vitesse F)
+  const FIL_AREA=2.405; // mm² — section d'un filament 1.75 mm
   // Données brutes pour le contrôle prévol — collectées ici (1 seule passe),
   // évaluées dans gSafety() contre le profil imprimante+firmware choisi.
   const safe={g28:false, movedBeforeHome:false,
               minX:1e9,maxX:-1e9,minY:1e9,maxY:-1e9,maxZmove:0,
               coldE:false, waitNozzle:false, maxNozzleSet:0, maxBedSet:0,
               endNozzle:0, endBed:0, g91AtEnd:false, filamentMm:0,
+              maxFlow:0, maxFlowLayer:0,
               pauses:{M600:0,M601:0,M0:0,M226:0,PAUSE:0,M400U1:0}};
   const pushLayer=(idx)=>layers.push({idx, z:null, x:st.x, y:st.y, e:st.e, absXY:st.absXY, absE:st.absE, tempN:st.tempN, fan:st.fan});
   const marker=(i)=>{ if(!markers){ markers=true; layers.length=0; } pushLayer(i); };
@@ -825,7 +912,14 @@ function gParse(text){
         if(st.z>safe.maxZmove)safe.maxZmove=st.z;
       }
       if(mv.zc) lastZLineIdx=i;
+      const dist=Math.hypot(st.x-mv.px, st.y-mv.py);
+      const sec=(dist>0&&st.f>0)?dist/(st.f/60):0;
+      if(sec&&layers.length) layerTimes[layers.length-1]=(layerTimes[layers.length-1]||0)+sec;
       if(mv.de>0){
+        if(dist>0.2&&sec>0){
+          const flow=mv.de*FIL_AREA/sec;      // mm³/s réellement demandés au hotend
+          if(flow>safe.maxFlow){ safe.maxFlow=flow; safe.maxFlowLayer=layers.length; }
+        }
         safe.filamentMm+=mv.de;
         if(st.tempN<170) safe.coldE=true;
         if(st.z>stats.maxZ) stats.maxZ=st.z;
@@ -863,7 +957,7 @@ function gParse(text){
     }
   }
   safe.g91AtEnd=!st.absXY;
-  return {lines, layers, stats, safe, markers};
+  return {lines, layers, stats, safe, markers, layerTimes};
 }
 
 // ── Profils firmware : commandes de pause réellement disponibles ────────────
@@ -908,6 +1002,19 @@ function gSafety(){
   if(S.endNozzle>0||S.endBed>0) rows.push(['🚫','warn','Chauffages non coupés en fin de fichier',`Dernières consignes : buse ${S.endNozzle} °C · plateau ${S.endBed} °C — la machine resterait chaude sans surveillance après l'impression.`]);
   else rows.push(['✅','ok','Chauffages coupés en fin d\'impression','Buse et plateau ramenés à 0 en fin de fichier.']);
   if(S.g91AtEnd) rows.push(['⚠️','warn','Mode relatif (G91) laissé actif en fin de fichier','Un fichier suivant qui suppose le mode absolu produirait des mouvements imprévisibles.']);
+  if(pr.flow&&S.maxFlow>0){
+    if(S.maxFlow>pr.flow*1.05)
+      rows.push([S.maxFlow>pr.flow*1.5?'🚫':'⚠️','warn',`Débit volumique jusqu'à ${S.maxFlow.toFixed(1)} mm³/s (couche ${S.maxFlowLayer||'?'})`,
+        `Au-delà des ~${pr.flow} mm³/s soutenables par ${pr.name} : extrusion sous-alimentée (couches faibles, trous). Réduis la vitesse ou la hauteur de couche, ou vérifie l'imprimante sélectionnée.`]);
+    else rows.push(['✅','ok',`Débit volumique OK (max ${S.maxFlow.toFixed(1)} mm³/s)`,`Sous la capacité ~${pr.flow} mm³/s du hotend (${pr.name}).`]);
+  }
+  if(GC.layerTimes&&GC.layerTimes.length){
+    const fast=[]; GC.layerTimes.forEach((t,i)=>{ if(t>0&&t<8) fast.push(i+1); });
+    if(fast.length)
+      rows.push(['⚠️','warn',`${fast.length} couche${fast.length>1?'s':''} trop rapide${fast.length>1?'s':''} pour refroidir (< 8 s)`,
+        `Couche${fast.length>1?'s':''} ${fast.slice(0,10).join(', ')}${fast.length>10?'…':''} — la matière n'a pas le temps de figer : surchauffe et affaissement des petits détails. Ralentis ces couches dans le slicer, ou imprime deux pièces en même temps.`]);
+    else rows.push(['✅','ok','Temps de refroidissement par couche OK','Aucune couche imprimée en moins de 8 s.']);
+  }
   const fm=S.filamentMm/1000;
   if(fm>0.05) rows.push(['ℹ️','ok',`Filament réellement extrudé : ${fm.toFixed(1)} m`,`≈ ${(fm*2.98).toFixed(0)} g en PLA — vérifie qu'il en reste assez sur la bobine avant de lancer.`]);
   const pl=Object.entries(S.pauses).filter(([,c])=>c>0);
@@ -1187,6 +1294,7 @@ function gRefreshPlan(){
       GOPS.map(o=>`${o.a}→${o.b}`).join(' · ');
   const nIns=gEdits().reduce((s,e)=>s+e.lines.length,0);
   html+=`<br><span style="color:var(--dim2)">${nIns} lignes insérées · 0 supprimée — l'original n'est jamais touché, le téléchargement est une copie.</span>`;
+  if(GC.hash) html+=`<br><span style="color:var(--dim2)">🔏 Passeport : empreinte source <span class="layer-lbl">${GC.hash.slice(0,12)}…</span> — un bloc passeport vérifiable (SHA-256, profil, verdict prévol) sera écrit en tête du fichier téléchargé.</span>`;
   if(fwKey==='klipper'&&mode==='M600') html+='<br><span style="color:var(--amber)">⚠️ M600 sous Klipper suppose une macro [gcode_macro M600] définie dans ta config.</span>';
   plan.innerHTML=html; dl.disabled=false; dl.classList.add('ready');
 }
@@ -1207,6 +1315,7 @@ function gLoadText(text, name){
   GCNAME=name.replace(/\.(gcode|gco|g|nc|txt)$/i,'');
   GC=gParse(text);
   if(!GC.layers.length){ alert('Aucune couche détectée dans ce fichier — est-ce bien un G-code d\'impression 3D ?'); GC=null; return; }
+  GC.hash=null; sha256hex(text).then(h=>{ if(GC){ GC.hash=h; gRefreshPlan(); } }); // empreinte source pour le passeport
   GOPS=[]; gRenderOps();
   G3D=null; g3dRefresh(); // invalide l'aperçu 3D du fichier précédent
   gShowStats();
@@ -1249,14 +1358,36 @@ $('greset').onclick=()=>{
   if(GC){ $('glayers').value=$('gslider').value; }
   gRefreshPlan();
 };
-$('gdl').onclick=()=>{
-  const txt=gApply(); if(txt==null) return;
+$('gdl').onclick=async()=>{
+  const body=gApply(); if(body==null) return;
   const list=gLayerList();
+  // Passeport d'impression : bloc de commentaires vérifiable en tête de fichier.
+  // "sha256 corps" = empreinte de tout ce qui suit la ligne de fin du passeport,
+  // donc quiconque retire le bloc peut recalculer et vérifier l'intégrité.
+  const srcHash=GC.hash||await sha256hex(GC.lines.join('\n'));
+  const bodyHash=await sha256hex(body);
+  const fw=FIRMWARES[$('gfw').value], pr=PRINTERS[$('printer').value]||PRINTERS.bambu_a1;
+  const sf=gSafety(), nW=sf.rows.filter(r=>r[1]==='warn').length;
+  const pass=[
+    '; ================================================================',
+    '; 3D PRINT CHECKER — PASSEPORT D\'IMPRESSION',
+    `; date         : ${new Date().toISOString()}`,
+    `; source       : ${GCNAME}.gcode`,
+    `; sha256 source: ${srcHash}`,
+    `; sha256 corps : ${bodyHash}`,
+    `; profil       : ${pr.name} · ${fw?fw.name:'firmware non renseigné'}`,
+    `; prevol       : ${sf.verdict[1]} (${nW} point${nW>1?'s':''} d'attention)`,
+    list.length?`; pauses       : ${GMODE_LABEL($('gmode').value)} avant couche(s) ${list.join(', ')}`:null,
+    GOPS.length?`; plages       : ${GOPS.map(o=>`${o.a}-${o.b}${o.t!=null?' '+o.t+'C':''}${o.f!=null?' fan '+o.f+'%':''}`).join(' | ')}`:null,
+    '; verification : retirer le bloc passeport (jusqu\'a la ligne ci-dessous incluse),',
+    ';                le sha256 du reste doit etre egal a "sha256 corps".',
+    '; ================================================================',
+  ].filter(Boolean);
   const parts=[GCNAME];
   if(list.length) parts.push(`pause_L${list.join('-')}`);
   if(GOPS.length) parts.push(`plages${GOPS.length}`);
   const a=document.createElement('a');
-  a.href=URL.createObjectURL(new Blob([txt],{type:'text/x-gcode'}));
+  a.href=URL.createObjectURL(new Blob([pass.join('\n')+'\n'+body],{type:'text/x-gcode'}));
   a.download=parts.join('_')+'.gcode';
   a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),5000);
 };
