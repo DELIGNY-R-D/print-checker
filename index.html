@@ -1,7 +1,7 @@
 <!doctype html><html lang="fr"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>3D Print Checker — coût, poids, fabricabilité, gratuit</title>
-<meta name="description" content="Analyse gratuite d'un fichier 3D (STL, OBJ, 3MF, PLY, GLTF/GLB, FBX, DAE, OFF, AMF) : volume, dimensions, poids, temps et coût d'impression 3D, détection des surplombs et risques de fabrication. Sans compte, sans inscription.">
+<title>3D Print Checker — coût, fabricabilité, pause G-code, gratuit</title>
+<meta name="description" content="Analyse gratuite d'un fichier 3D (STL, OBJ, 3MF, PLY, GLTF/GLB, FBX, DAE, OFF, AMF) : volume, poids, temps, coût d'impression et risques de fabrication. Boîte à outils G-code : insérer une pause ou un changement de filament (M600) à la couche de ton choix, stats et aperçu des couches. Sans compte, sans inscription.">
 <style>
 :root{
   --bg:#000; --bg1:#0a0a0c; --card:#1c1c1e; --card2:#212123;
@@ -68,6 +68,27 @@ input[type=range]{accent-color:var(--blue);}
 .risk.ok .ic{filter:none;}
 .empty{color:var(--dim2);font-style:italic;font-size:13px;}
 
+/* G-code toolbox */
+.sechead{text-align:center;font-size:24px;font-weight:650;letter-spacing:-.02em;margin:40px 0 0;}
+.sechead .g{background:linear-gradient(90deg,#ff9f0a,#ff453a 60%,#ff375f);-webkit-background-clip:text;background-clip:text;color:transparent;}
+.secsub{text-align:center;color:var(--dim);font-size:14.5px;margin:6px auto 0;max-width:600px;}
+#gdrop{border:1.5px dashed var(--sep);border-radius:16px;padding:22px 18px;text-align:center;cursor:pointer;transition:border-color .2s,background .2s;}
+#gdrop.hover{border-color:var(--amber);background:rgba(255,159,10,.06);}
+#gdrop .big{font-size:32px;margin-bottom:6px;}
+#gdrop .t{font-weight:600;} #gdrop .h{color:var(--dim2);font-size:13px;margin-top:4px;}
+.gstats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:14px;}
+.gstat{background:var(--card2);border-radius:12px;padding:10px 12px;}
+.gstat .k{font-size:10px;color:var(--dim2);text-transform:uppercase;letter-spacing:.05em;font-weight:600;}
+.gstat .v{font-size:16px;font-weight:650;letter-spacing:-.01em;margin-top:3px;}
+.gstat .v small{font-size:11px;color:var(--dim);font-weight:500;}
+#gcanvas{width:100%;height:230px;border-radius:14px;background:radial-gradient(120% 120% at 50% 0%,#141416,#000);display:block;margin-top:12px;}
+.layer-lbl{font-family:var(--mono);font-size:12px;color:var(--dim);}
+input[type=text].gtxt{width:100%;background:#141416;color:var(--txt);border:.5px solid var(--sep);border-radius:10px;padding:8px 10px;font:14px var(--mono);}
+.gplan{margin-top:14px;font-size:13px;color:var(--dim);background:var(--card2);border-radius:12px;padding:12px 14px;line-height:1.65;}
+.gplan b{color:var(--txt);}
+.gnote{margin-top:14px;font-size:12.5px;color:var(--dim2);line-height:1.55;}
+#s-elec{margin-top:10px;font-size:12.5px;color:var(--dim2);}
+
 footer{text-align:center;color:var(--dim2);font-size:12px;margin-top:34px;line-height:1.7;}
 footer .disc{max-width:640px;margin:0 auto 10px;}
 
@@ -99,7 +120,7 @@ footer .disc{max-width:640px;margin:0 auto 10px;}
 <div class="wrap">
   <header>
     <h1><span class="g">3D Print Checker</span></h1>
-    <div class="sub">Dépose un fichier 3D — STL, OBJ, 3MF, PLY, GLTF/GLB, FBX, DAE, OFF, AMF — : coût matière, temps, poids, dimensions et <b>risques de fabrication</b> (surplombs, orientation, tenue plateau) — en quelques secondes.</div>
+    <div class="sub">Dépose un fichier 3D — STL, OBJ, 3MF, PLY, GLTF/GLB, FBX, DAE, OFF, AMF — : coût matière, temps, poids, dimensions et <b>risques de fabrication</b> (surplombs, orientation, tenue plateau) — en quelques secondes. Et en bas de page : la <b>boîte à outils G-code</b> pour insérer une pause ou un changement de filament à la couche de ton choix.</div>
     <span class="free">100 % gratuit · aucun compte · rien n'est envoyé (tout se calcule dans ton navigateur)</span>
   </header>
 
@@ -150,6 +171,7 @@ footer .disc{max-width:640px;margin:0 auto 10px;}
         <div class="stat"><div class="k">Coût matière</div><div class="v cost" id="s-c">—</div></div>
         <div class="stat"><div class="k">Plateau</div><div class="v" id="s-bed" style="font-size:15px">—</div></div>
       </div>
+      <div id="s-elec"></div>
       <div class="castable-note" id="castable-note" style="display:none"></div>
       <h2 style="margin-top:22px">3 · Fabricabilité</h2>
       <div id="risks"><div class="empty">Charge un modèle pour lancer l'analyse.</div></div>
@@ -159,8 +181,64 @@ footer .disc{max-width:640px;margin:0 auto 10px;}
     </div>
   </div>
 
+  <!-- ── BOÎTE À OUTILS G-CODE ─────────────────────────────────────────── -->
+  <h2 class="sechead"><span class="g">Boîte à outils G-code</span></h2>
+  <div class="secsub">Insère une <b>pause</b> ou un <b>changement de filament</b> à la couche exacte de ton choix — pour glisser un aimant, un écrou, ou changer de couleur. 100 % local, ton G-code ne quitte pas le navigateur.</div>
+
+  <div class="grid">
+    <!-- LEFT : gcode upload + stats + layer preview -->
+    <div class="card">
+      <h2>4 · Ton G-code</h2>
+      <div id="gdrop">
+        <div class="big">⚙️</div>
+        <div class="t">Dépose un fichier G-code ici</div>
+        <div class="h">.gcode · .gco · .g — Cura, PrusaSlicer, OrcaSlicer, Bambu Studio, Simplify3D…</div>
+      </div>
+      <div class="row-btn">
+        <button class="btn pri" id="gpick">Choisir un fichier</button>
+        <button class="btn" id="gdemo">Charger un exemple</button>
+      </div>
+      <input type="file" id="gfile" accept=".gcode,.gco,.g,.nc,.txt" hidden>
+      <div class="gstats" id="gstats" style="display:none">
+        <div class="gstat"><div class="k">Couches</div><div class="v" id="g-layers">—</div></div>
+        <div class="gstat"><div class="k">Hauteur</div><div class="v" id="g-height">—</div></div>
+        <div class="gstat"><div class="k">Temps (slicer)</div><div class="v" id="g-time">—</div></div>
+        <div class="gstat"><div class="k">Filament</div><div class="v" id="g-fil">—</div></div>
+        <div class="gstat"><div class="k">Buse / plateau</div><div class="v" id="g-temp">—</div></div>
+        <div class="gstat"><div class="k">Slicer</div><div class="v" id="g-slicer">—</div></div>
+      </div>
+      <div class="fld" style="margin-top:14px">
+        <label>Aperçu de la couche <span class="layer-lbl" id="glabel">—</span></label>
+        <input type="range" id="gslider" min="1" max="1" step="1" value="1" disabled>
+      </div>
+      <canvas id="gcanvas"></canvas>
+    </div>
+
+    <!-- RIGHT : pause insertion -->
+    <div class="card">
+      <h2>5 · Insérer une pause / changement de filament</h2>
+      <div class="ctrls" style="margin-top:0">
+        <div class="fld" style="grid-column:1/-1"><label>Type de pause (selon ton firmware)</label>
+          <select id="gmode">
+            <option value="M600" selected>M600 — changement de filament (Marlin · Prusa · Ender…)</option>
+            <option value="M0">M0 — pause simple avec parcage (Marlin)</option>
+            <option value="M601">M601 — pause (Prusa MK3/MK4)</option>
+            <option value="M400U1">M400 U1 — pause (Bambu Lab)</option>
+            <option value="PAUSE">PAUSE — macro (Klipper)</option>
+          </select></div>
+        <div class="fld" style="grid-column:1/-1"><label>Couche(s) — la pause s'exécute <b>avant</b> l'impression de la couche indiquée (ex : <span class="layer-lbl">42</span> ou <span class="layer-lbl">30, 60</span>)</label>
+          <input type="text" class="gtxt" id="glayers" placeholder="Charge un G-code d'abord" disabled></div>
+      </div>
+      <div class="gplan" id="gplan">Charge un G-code (ou l'exemple) pour préparer une pause.</div>
+      <div class="export-row">
+        <button class="btn pri export" id="gdl" disabled>⬇︎ Télécharger le G-code modifié</button>
+      </div>
+      <div class="gnote">💡 <b>Insert d'aimant ou d'écrou :</b> dans ton slicer, repère la première couche qui <i>recouvre</i> la cavité, et mets la pause sur cette couche : la pièce s'arrête juste avant de refermer le logement. <b>M600</b> gère seul le parcage et la reprise ; <b>M0</b> ajoute ici un parcage + rétraction et reprend là où il s'était arrêté. Vérifie que ton firmware supporte la commande choisie.</div>
+    </div>
+  </div>
+
   <footer>
-    <div class="disc">Estimations indicatives (débit ~10 mm³/s, modèle coque+remplissage pour le FDM ; nb de couches × cure pour la résine/cire castable) — pas un slicer réel. Le calcul de paroi minimale exacte nécessite un slicing. Import multi-format (OBJ, 3MF, GLTF/GLB, FBX, DAE...) fait entièrement dans ton navigateur — aucun fichier n'est envoyé à un serveur. Les formats CAO paramétriques (STEP, IGES) ne sont pas encore supportés.</div>
+    <div class="disc">Estimations indicatives (débit ~10 mm³/s, modèle coque+remplissage pour le FDM ; nb de couches × cure pour la résine/cire castable) — pas un slicer réel. Le calcul de paroi minimale exacte nécessite un slicing. Import multi-format (OBJ, 3MF, GLTF/GLB, FBX, DAE...) fait entièrement dans ton navigateur — aucun fichier n'est envoyé à un serveur. Les formats CAO paramétriques (STEP, IGES) ne sont pas encore supportés. La boîte à outils G-code lit et modifie ton fichier entièrement en local (rien n'est envoyé) ; vérifie toujours la première impression avec pause à proximité de la machine.</div>
     Moteur de calcul dérivé de <b>General Design Studio</b>. · Un outil DELIGNY.
   </footer>
 </div>
@@ -222,19 +300,22 @@ const MATERIAL_GROUPS = [
 ];
 const MATERIALS = Object.assign({}, ...MATERIAL_GROUPS.map(g=>g.items));
 
+// `watts` = consommation moyenne en régime d'impression (ordre de grandeur constaté,
+// pas la puissance crête de l'alim) — sert au coût électricité indicatif.
 const PRINTER_GROUPS = [
   { label:"FDM (filament)", items:{
-    bambu_a1:    { name:"Bambu Lab A1",      bed:[256,256,256] },
-    bambu_a1mini:{ name:"Bambu Lab A1 mini", bed:[180,180,180] },
-    prusa_mk4:   { name:"Prusa MK4",         bed:[250,210,220] },
-    ender3:      { name:"Creality Ender-3",  bed:[220,220,250] },
-    x1c:         { name:"Bambu Lab X1C",     bed:[256,256,256] },
+    bambu_a1:    { name:"Bambu Lab A1",      bed:[256,256,256], watts:95 },
+    bambu_a1mini:{ name:"Bambu Lab A1 mini", bed:[180,180,180], watts:80 },
+    prusa_mk4:   { name:"Prusa MK4",         bed:[250,210,220], watts:105 },
+    ender3:      { name:"Creality Ender-3",  bed:[220,220,250], watts:120 },
+    x1c:         { name:"Bambu Lab X1C",     bed:[256,256,256], watts:140 },
   }},
   { label:"Résine (SLA/DLP, format bijouterie)", items:{
-    photon_mono: { name:"Anycubic Photon Mono", bed:[130,80,165] },
-    saturn:      { name:"Elegoo Saturn",         bed:[192,120,200] },
+    photon_mono: { name:"Anycubic Photon Mono", bed:[130,80,165], watts:45 },
+    saturn:      { name:"Elegoo Saturn",         bed:[192,120,200], watts:60 },
   }},
 ];
+const ELEC_EUR_KWH = 0.20; // tarif indicatif France
 const PRINTERS = Object.assign({}, ...PRINTER_GROUPS.map(g=>g.items));
 const OVERHANG_LIMIT = 50; // ° au-delà desquels supports requis
 const UNIT_FACTORS = { mm:1, cm:10, m:1000, in:25.4 }; // → mm
@@ -423,8 +504,10 @@ function estimate(g, printerKey, materialKey, infill, wall){
   const s=g.size;
   const fits = s[0]<=pr.bed[0] && s[1]<=pr.bed[1] && s[2]<=pr.bed[2];
   const bedUsage = Math.round(Math.max(s[0]/pr.bed[0], s[1]/pr.bed[1])*100);
+  const elecEur = (pr.watts||100) * (timeMin/60) / 1000 * ELEC_EUR_KWH;
   return { materialMm3, weightG:Math.round(weightG), costEur:+costEur.toFixed(2),
            timeMin:Math.round(timeMin), timeH:+(timeMin/60).toFixed(1),
+           elecEur:+elecEur.toFixed(2), watts:pr.watts||100,
            fits, bedUsage, bed:pr.bed, isCastable };
 }
 
@@ -507,6 +590,7 @@ function update(){
   $('s-t').innerHTML=est.isCastable?`${est.timeH}<small> h · résine</small>`:`${est.timeH}<small> h</small>`;
   $('s-c').innerHTML=`${est.costEur.toFixed(2)}<small> €</small>`;
   $('s-bed').innerHTML=est.fits?`<span class="badge ok">tient · ${est.bedUsage}%</span>`:`<span class="badge warn">dépasse</span>`;
+  $('s-elec').textContent=`⚡ + ${est.elecEur.toFixed(2)} € d'électricité environ (~${est.watts} W × ${est.timeH} h, base ${ELEC_EUR_KWH.toFixed(2)} €/kWh)`;
   const note=$('castable-note');
   if(est.isCastable){
     note.style.display='block';
@@ -542,6 +626,7 @@ function buildReport(){
     ['Poids',`${est.weightG} g`],
     ['Temps',est.isCastable?`${est.timeH} h (modèle résine, indicatif)`:`${est.timeH} h`],
     ['Coût matière',`${est.costEur.toFixed(2)} €`],
+    ['Électricité',`≈ ${est.elecEur.toFixed(2)} € (${est.watts} W)`],
     ['Plateau',est.fits?`OK (${est.bedUsage}%)`:'DÉPASSE'],
     ['Remplissage',`${$('infill').value} % · paroi ${$('wall').value} mm`],
   ].map(([k,v])=>`<div><b>${k}</b><br>${v}</div>`).join('');
@@ -596,8 +681,272 @@ function demoTris(){
 }
 $('demo').onclick=()=>run(demoTris());
 
+// ══ BOÎTE À OUTILS G-CODE ═══════════════════════════════════════════════════
+// Tout est local : on lit le texte, on repère les débuts de couche (marqueurs
+// slicer, sinon détection par changement de Z au dépôt), on capture l'état
+// machine (X/Y/E, modes G90-91/M82-83) à chaque début de couche pour pouvoir
+// insérer un bloc pause SÛRE (rétraction + parcage + reprise exacte pour M0 ;
+// commande seule pour M600/M601/M400 U1/PAUSE dont le firmware gère le parcage).
+let GC=null, GCNAME='fichier';
+
+function gParams(s){
+  const p={}; const re=/([XYZEFS])\s*(-?\d*\.?\d+)/gi; let m;
+  while((m=re.exec(s))) p[m[1].toUpperCase()]=+m[2];
+  return p;
+}
+function gCode(s){ const m=/^\s*(?:N\d+\s+)?([GMT]\d+(?:\.\d+)?)\b/i.exec(s); return m?m[1].toUpperCase():null; }
+// Interprète UNE ligne de mouvement/mode sur l'état st — partagé entre le
+// parseur global et l'aperçu de couche pour ne pas diverger.
+function gStep(st, cmd, s){
+  if(cmd==='G90'){ st.absXY=true; st.absE=true; return null; }
+  if(cmd==='G91'){ st.absXY=false; st.absE=false; return null; }
+  if(cmd==='M82'){ st.absE=true; return null; }
+  if(cmd==='M83'){ st.absE=false; return null; }
+  if(cmd==='G92'){ const p=gParams(s); if(p.E!=null)st.e=p.E; if(p.X!=null)st.x=p.X; if(p.Y!=null)st.y=p.Y; if(p.Z!=null)st.z=p.Z; return null; }
+  if(cmd==='G0'||cmd==='G1'||cmd==='G2'||cmd==='G3'){
+    const p=gParams(s), px=st.x, py=st.y;
+    if(p.X!=null) st.x = st.absXY ? p.X : st.x+p.X;
+    if(p.Y!=null) st.y = st.absXY ? p.Y : st.y+p.Y;
+    const zc = p.Z!=null; if(zc) st.z = st.absXY ? p.Z : st.z+p.Z;
+    let de=0; if(p.E!=null){ de = st.absE ? p.E-st.e : p.E; st.e = st.absE ? p.E : st.e+p.E; }
+    return {px,py,de,zc};
+  }
+  return undefined;
+}
+function gParseDuration(str){ // "1d 2h 3m 4s", "2h 3m"… → secondes
+  let s=0, m; const re=/(\d+)\s*([dhms])/gi;
+  while((m=re.exec(str))) s += +m[1]*{d:86400,h:3600,m:60,s:1}[m[2].toLowerCase()];
+  return s||null;
+}
+function gParse(text){
+  const lines=text.split('\n');
+  const layers=[];   // {idx, z, x, y, e, absXY, absE} — état AVANT la couche
+  const st={x:0,y:0,z:0,e:0,absXY:true,absE:true};
+  let markers=false, lastExtrudedZ=null, lastZLineIdx=0;
+  const stats={timeS:null,filamentM:null,filamentG:null,nozzle:null,bed:null,slicer:null,maxZ:0};
+  const pushLayer=(idx)=>layers.push({idx, z:null, x:st.x, y:st.y, e:st.e, absXY:st.absXY, absE:st.absE});
+  const marker=(i)=>{ if(!markers){ markers=true; layers.length=0; } pushLayer(i); };
+  for(let i=0;i<lines.length;i++){
+    const raw=lines[i];
+    if(!raw) continue;
+    if(raw.charCodeAt(0)===59){ // commentaire : marqueurs de couche + stats slicer
+      let m;
+      if(/^;LAYER:-?\d+/.test(raw)) marker(i);
+      else if(/^;\s*(LAYER_CHANGE|CHANGE_LAYER)/i.test(raw)) marker(i);
+      else if(/^;\s*layer\s+\d+/i.test(raw)) marker(i);
+      else if((m=/^;\s*Z(?:_HEIGHT)?\s*:\s*([\d.]+)/i.exec(raw))){ const L=layers[layers.length-1]; if(L&&L.z==null) L.z=+m[1]; }
+      else if((m=/^;TIME:(\d+)/.exec(raw))) stats.timeS=+m[1];
+      else if((m=/estimated printing time.*=\s*(.+)/i.exec(raw))) stats.timeS=gParseDuration(m[1]);
+      else if((m=/total estimated time:\s*(.+)/i.exec(raw))) stats.timeS=gParseDuration(m[1]);
+      else if((m=/^;Filament used:\s*([\d.]+)\s*m/i.exec(raw))) stats.filamentM=+m[1];
+      else if((m=/filament used \[mm\]\s*=\s*([\d.]+)/i.exec(raw))) stats.filamentM=+m[1]/1000;
+      else if((m=/filament used \[g\]\s*=\s*([\d.]+)/i.exec(raw))) stats.filamentG=+m[1];
+      else if(!stats.slicer&&(m=/(Cura_SteamEngine|PrusaSlicer|OrcaSlicer|BambuStudio|Simplify3D|ideaMaker|Slic3r|KISSlicer|PrintChecker-Demo)/i.exec(raw))) stats.slicer=m[1].replace('_SteamEngine','');
+      continue;
+    }
+    const ci=raw.indexOf(';'); const s=ci>=0?raw.slice(0,ci):raw;
+    const cmd=gCode(s); if(!cmd) continue;
+    const mv=gStep(st,cmd,s);
+    if(mv){
+      if(mv.zc) lastZLineIdx=i;
+      if(mv.de>0){
+        if(st.z>stats.maxZ) stats.maxZ=st.z;
+        const L=layers[layers.length-1];
+        if(L&&L.z==null) L.z=+st.z.toFixed(3);   // couche Cura sans ;Z: → Z du 1er dépôt
+        if(!markers && st.z!==lastExtrudedZ){    // fallback sans marqueurs : nouveau Z déposé = nouvelle couche
+          layers.push({idx:lastZLineIdx, z:+st.z.toFixed(3), x:st.x, y:st.y, e:st.e, absXY:st.absXY, absE:st.absE});
+          lastExtrudedZ=st.z;
+        }
+      }
+      continue;
+    }
+    if(mv===undefined){
+      if((cmd==='M104'||cmd==='M109') && stats.nozzle==null){ const p=gParams(s); if(p.S) stats.nozzle=p.S; }
+      else if((cmd==='M140'||cmd==='M190') && stats.bed==null){ const p=gParams(s); if(p.S) stats.bed=p.S; }
+    }
+  }
+  return {lines, layers, stats, markers};
+}
+
+// ── Bloc pause inséré AVANT le début de la couche n (1-based) ───────────────
+function gPauseBlock(mode, n, L){
+  const z=L.z!=null?L.z.toFixed(2):'?';
+  const head=`; >>> 3D PRINT CHECKER — pause avant la couche ${n} (Z ≈ ${z} mm) <<<`;
+  const tail=`; >>> 3D PRINT CHECKER — fin du bloc pause <<<`;
+  if(mode==='M0'){
+    // Wrapper complet : le firmware ne parque pas sur M0 → rétraction, levée,
+    // parcage, pause, puis retour EXACT (position + état extrudeur capturés).
+    return [head,
+      'M83            ; extrusion relative pour la retraction',
+      'G1 E-2 F2700   ; retracte 2 mm',
+      'G91','G1 Z10 F900    ; leve la buse de 10 mm','G90',
+      'G1 X0 Y0 F6000 ; parcage (adapte X/Y si besoin)',
+      'M400           ; vide le buffer',
+      'M0             ; PAUSE — reprendre depuis l\'ecran de l\'imprimante',
+      `G1 X${L.x.toFixed(3)} Y${L.y.toFixed(3)} F6000 ; retour position`,
+      'G91','G1 Z-10 F900   ; redescend','G90',
+      'G1 E2 F2700    ; re-amorce 2 mm',
+      L.absE?'M82            ; retour extrusion absolue':'M83',
+      L.absE?`G92 E${L.e.toFixed(5)} ; restaure la position extrudeur`:null,
+      tail].filter(Boolean);
+  }
+  const single={ M600:'M600 ; changement de filament — le firmware parque et reprend seul',
+                 M601:'M601 ; pause Prusa — parcage gere par le firmware',
+                 M400U1:'M400 U1 ; pause Bambu Lab',
+                 PAUSE:'PAUSE ; macro Klipper' };
+  return [head, single[mode]||'M600', tail];
+}
+function gLayerList(){
+  if(!GC) return [];
+  const seen=new Set();
+  return $('glayers').value.split(/[,;\s]+/)
+    .map(v=>parseInt(v,10))
+    .filter(n=>Number.isInteger(n)&&n>=1&&n<=GC.layers.length&&!seen.has(n)&&seen.add(n))
+    .sort((a,b)=>a-b);
+}
+function gApply(){
+  const list=gLayerList();
+  if(!GC||!list.length) return null;
+  const out=GC.lines.slice();
+  for(const n of [...list].reverse()){          // descendant → les index restent valides
+    const L=GC.layers[n-1];
+    out.splice(L.idx, 0, ...gPauseBlock($('gmode').value, n, L));
+  }
+  return out.join('\n');
+}
+
+// ── Aperçu 2D (vue de dessus) de la couche sélectionnée ─────────────────────
+function gDraw(n){
+  const cv=$('gcanvas'), ctx=cv.getContext('2d');
+  const w=cv.clientWidth||600, h=cv.clientHeight||230, dpr=Math.min(2,devicePixelRatio||1);
+  cv.width=w*dpr; cv.height=h*dpr; ctx.setTransform(dpr,0,0,dpr,0,0);
+  ctx.clearRect(0,0,w,h);
+  ctx.fillStyle='#86868b'; ctx.font='11px '+getComputedStyle(document.body).fontFamily;
+  if(!GC||!GC.layers[n-1]){ ctx.fillText('Aperçu de la couche (vue de dessus) — charge un G-code', 14, 22); return; }
+  const L=GC.layers[n-1];
+  const end=GC.layers[n]?GC.layers[n].idx:GC.lines.length;
+  const st={x:L.x,y:L.y,z:0,e:L.e,absXY:L.absXY,absE:L.absE};
+  const segs=[]; let mnx=1e9,mny=1e9,mxx=-1e9,mxy=-1e9;
+  for(let i=L.idx;i<end;i++){
+    const raw=GC.lines[i];
+    if(!raw||raw.charCodeAt(0)===59) continue;
+    const ci=raw.indexOf(';'); const s=ci>=0?raw.slice(0,ci):raw;
+    const cmd=gCode(s); if(!cmd) continue;
+    const mv=gStep(st,cmd,s);
+    if(mv&&mv.de>0){
+      segs.push(mv.px,mv.py,st.x,st.y);
+      mnx=Math.min(mnx,mv.px,st.x); mxx=Math.max(mxx,mv.px,st.x);
+      mny=Math.min(mny,mv.py,st.y); mxy=Math.max(mxy,mv.py,st.y);
+    }
+  }
+  if(!segs.length){ ctx.fillText('Couche sans dépôt de matière (déplacements seulement)', 14, 22); return; }
+  const pad=18, sc=Math.min((w-2*pad)/Math.max(1e-6,mxx-mnx),(h-2*pad)/Math.max(1e-6,mxy-mny));
+  const ox=(w-(mxx-mnx)*sc)/2, oy=(h-(mxy-mny)*sc)/2;
+  const X=x=>ox+(x-mnx)*sc, Y=y=>h-(oy+(y-mny)*sc); // Y écran inversé
+  ctx.strokeStyle='#2997ff'; ctx.lineWidth=1.2; ctx.lineCap='round'; ctx.beginPath();
+  for(let i=0;i<segs.length;i+=4){ ctx.moveTo(X(segs[i]),Y(segs[i+1])); ctx.lineTo(X(segs[i+2]),Y(segs[i+3])); }
+  ctx.stroke();
+  ctx.fillStyle='#86868b';
+  ctx.fillText(`couche ${n}/${GC.layers.length} · Z ≈ ${L.z!=null?L.z.toFixed(2):'?'} mm · ${(mxx-mnx).toFixed(0)}×${(mxy-mny).toFixed(0)} mm`, 14, h-12);
+}
+
+// ── UI G-code ───────────────────────────────────────────────────────────────
+function gFmtTime(sec){ if(!sec) return '—'; const hh=Math.floor(sec/3600), mm=Math.round(sec%3600/60); return hh?`${hh} h ${mm.toString().padStart(2,'0')}`:`${mm} min`; }
+function gRefreshPlan(){
+  const plan=$('gplan'), dl=$('gdl');
+  if(!GC){ plan.textContent='Charge un G-code (ou l\'exemple) pour préparer une pause.'; dl.disabled=true; dl.classList.remove('ready'); return; }
+  const list=gLayerList();
+  if(!list.length){ plan.innerHTML='Indique au moins une couche valide (1 à '+GC.layers.length+').'; dl.disabled=true; dl.classList.remove('ready'); return; }
+  const mode=$('gmode').value;
+  plan.innerHTML=`<b>${list.length} pause${list.length>1?'s':''}</b> — mode <b>${mode==='M400U1'?'M400 U1':mode}</b> :<br>`+
+    list.map(n=>{ const L=GC.layers[n-1]; return `· avant la couche <b>${n}</b> (Z ≈ ${L.z!=null?L.z.toFixed(2):'?'} mm)`; }).join('<br>');
+  dl.disabled=false; dl.classList.add('ready');
+}
+function gShowStats(){
+  const s=GC.stats;
+  $('gstats').style.display='grid';
+  $('g-layers').textContent=GC.layers.length;
+  $('g-height').innerHTML=s.maxZ?`${s.maxZ.toFixed(1)}<small> mm</small>`:'—';
+  $('g-time').textContent=gFmtTime(s.timeS);
+  let fil='—';
+  if(s.filamentM!=null){ const g=s.filamentG!=null?s.filamentG:s.filamentM*2.98; fil=`${s.filamentM.toFixed(2)} m <small>≈ ${g.toFixed(0)} g</small>`; }
+  else if(s.filamentG!=null) fil=`${s.filamentG.toFixed(0)} g`;
+  $('g-fil').innerHTML=fil;
+  $('g-temp').innerHTML=(s.nozzle?`${s.nozzle}°`:'—')+`<small> / </small>`+(s.bed?`${s.bed}°`:'—');
+  $('g-slicer').textContent=s.slicer||(GC.markers?'inconnu':'sans marqueurs');
+}
+function gLoadText(text, name){
+  GCNAME=name.replace(/\.(gcode|gco|g|nc|txt)$/i,'');
+  GC=gParse(text);
+  if(!GC.layers.length){ alert('Aucune couche détectée dans ce fichier — est-ce bien un G-code d\'impression 3D ?'); GC=null; return; }
+  gShowStats();
+  const sl=$('gslider'); sl.disabled=false; sl.max=GC.layers.length;
+  sl.value=Math.min(GC.layers.length, Math.max(2, Math.ceil(GC.layers.length/2)));
+  const inp=$('glayers'); inp.disabled=false; inp.placeholder='ex : 42 ou 30, 60'; inp.value=sl.value;
+  gSync();
+}
+function gSync(){
+  const n=+$('gslider').value;
+  $('glabel').textContent=GC?`${n} / ${GC.layers.length} — Z ≈ ${GC.layers[n-1].z!=null?GC.layers[n-1].z.toFixed(2):'?'} mm`:'—';
+  gDraw(n); gRefreshPlan();
+}
+$('gslider').addEventListener('input',()=>{ $('glayers').value=$('gslider').value; gSync(); });
+$('glayers').addEventListener('input',()=>{ const l=gLayerList(); if(l.length) $('gslider').value=l[0]; gSync(); });
+$('gmode').addEventListener('input',gRefreshPlan);
+$('gdl').onclick=()=>{
+  const txt=gApply(); if(txt==null) return;
+  const list=gLayerList();
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([txt],{type:'text/x-gcode'}));
+  a.download=`${GCNAME}_pause_L${list.join('-')}.gcode`;
+  a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),5000);
+};
+async function gLoadFile(f){
+  if(!f) return;
+  const dz=$('gdrop'); const prev=dz.querySelector('.t').textContent;
+  dz.querySelector('.t').textContent='Lecture en cours…';
+  try{ gLoadText(await f.text(), f.name); }
+  catch(err){ console.error(err); alert('Impossible de lire ce G-code : '+(err&&err.message?err.message:err)); }
+  finally{ dz.querySelector('.t').textContent=prev; }
+}
+$('gpick').onclick=()=>$('gfile').click();
+$('gfile').onchange=e=>gLoadFile(e.target.files[0]);
+const gdz=$('gdrop');
+gdz.onclick=()=>$('gfile').click();
+gdz.ondragover=e=>{e.preventDefault();gdz.classList.add('hover');};
+gdz.ondragleave=()=>gdz.classList.remove('hover');
+gdz.ondrop=e=>{e.preventDefault();gdz.classList.remove('hover');gLoadFile(e.dataTransfer.files[0]);};
+
+// Exemple : cube 40×40, 25 couches, 3 périmètres — assez pour tester pause + aperçu
+function gDemoText(){
+  const L=['; demo — cube 40x40, 25 couches','; generated by PrintChecker-Demo',';TIME:1500',';LAYER_COUNT:25',
+           'M104 S210','M140 S60','G28','G90','M82','G92 E0'];
+  let e=0;
+  const EPM=0.0332; // mm de filament extrudé par mm parcouru (buse 0.4, couche 0.2)
+  for(let n=0;n<25;n++){
+    L.push(`;LAYER:${n}`);
+    L.push(`G0 Z${(0.2*(n+1)).toFixed(2)} F900`);
+    for(let k=0;k<3;k++){
+      const o=80+k*0.8, side=40-k*1.6;
+      let x=o,y=o;
+      L.push(`G0 X${x} Y${y} F6000`);
+      for(const [dx,dy] of [[side,0],[0,side],[-side,0],[0,-side]]){
+        x+=dx; y+=dy; e+=Math.hypot(dx,dy)*EPM;
+        L.push(`G1 X${x.toFixed(2)} Y${y.toFixed(2)} E${e.toFixed(4)} F1800`);
+      }
+    }
+  }
+  L.push('M104 S0','M140 S0','G91','G1 Z10 F900','G90','M84');
+  L.push(`;Filament used: ${(e/1000).toFixed(3)}m`);
+  return L.join('\n');
+}
+$('gdemo').onclick=()=>gLoadText(gDemoText(),'exemple-cube.gcode');
+// petite API de debug/power-users (console) — volontairement exposée
+window.PrintChecker={gParse,gPauseBlock,gApply};
+
 // init
 sizeView(); frame();
 run(demoTris());          // charge la démo au démarrage
+gDraw(1);                 // placeholder de l'aperçu G-code
 </script>
 </body></html>
