@@ -1,7 +1,7 @@
 <!doctype html><html lang="fr"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>3D Print Checker — contrôle prévol : analyse 3D, sécurité G-code, pause — gratuit</title>
-<meta name="description" content="Le contrôle prévol gratuit de tes impressions 3D : analyse du modèle (volume, poids, coût, surplombs), contrôle de sécurité du G-code (mouvements hors plateau, extrusion à froid, chauffages non coupés, compatibilité firmware), pause ou changement de filament (M600) à la couche choisie, température et ventilation par plage de couches. 100 % dans le navigateur, sans compte.">
+<meta name="description" content="Le contrôle prévol gratuit de tes impressions 3D : analyse du modèle (volume, poids, coût, surplombs), aperçu 3D des trajectoires G-code coloré par type, contrôle de sécurité du G-code (mouvements hors plateau, extrusion à froid, chauffages non coupés, compatibilité firmware), pause ou changement de filament (M600) à la couche choisie, température et ventilation par plage de couches. 100 % dans le navigateur, sans compte.">
 <style>
 :root{
   --bg:#000; --bg1:#0a0a0c; --card:#1c1c1e; --card2:#212123;
@@ -82,6 +82,15 @@ input[type=range]{accent-color:var(--blue);}
 .gstat .v{font-size:16px;font-weight:650;letter-spacing:-.01em;margin-top:3px;}
 .gstat .v small{font-size:11px;color:var(--dim);font-weight:500;}
 #gcanvas{width:100%;height:230px;border-radius:14px;background:radial-gradient(120% 120% at 50% 0%,#141416,#000);display:block;margin-top:12px;}
+#g3dwrap{margin-top:12px;position:relative;}
+#g3d{width:100%;height:300px;border-radius:14px;background:radial-gradient(120% 120% at 50% 0%,#141416,#000);overflow:hidden;}
+#g3d canvas{display:block;}
+#g3dwrap .hint{position:absolute;top:8px;right:12px;font-size:11px;color:var(--dim2);}
+.g3dlegend{display:flex;flex-wrap:wrap;gap:10px 14px;margin-top:8px;font-size:11px;color:var(--dim2);align-items:center;}
+.g3dlegend .chip{display:inline-flex;align-items:center;gap:5px;}
+.g3dlegend .chip i{width:12px;height:3px;border-radius:2px;display:inline-block;}
+.btn.seg.active{background:var(--blue-cta);color:#fff;}
+.trv{font-size:12px;color:var(--dim2);display:inline-flex;align-items:center;gap:5px;cursor:pointer;}
 .layer-lbl{font-family:var(--mono);font-size:12px;color:var(--dim);}
 input[type=text].gtxt{width:100%;background:#141416;color:var(--txt);border:.5px solid var(--sep);border-radius:10px;padding:8px 10px;font:14px var(--mono);}
 .gplan{margin-top:14px;font-size:13px;color:var(--dim);background:var(--card2);border-radius:12px;padding:12px 14px;line-height:1.65;}
@@ -188,7 +197,7 @@ footer .disc{max-width:640px;margin:0 auto 10px;}
 
   <!-- ── BOÎTE À OUTILS G-CODE ─────────────────────────────────────────── -->
   <h2 class="sechead"><span class="g">Boîte à outils G-code</span></h2>
-  <div class="secsub">Analyse ton G-code, passe-le au <b>contrôle de sécurité prévol</b> (hors plateau, extrusion à froid, chauffages, firmware), puis modifie-le : <b>pause</b>, <b>changement de filament</b>, <b>température ou ventilation par plage de couches</b>. 100 % local, ton G-code ne quitte pas le navigateur.</div>
+  <div class="secsub">Visualise tes trajectoires en <b>3D</b> (colorées par type : parois, remplissage, supports…), passe ton G-code au <b>contrôle de sécurité prévol</b> (hors plateau, extrusion à froid, chauffages, firmware), puis modifie-le : <b>pause</b>, <b>changement de filament</b>, <b>température ou ventilation par plage de couches</b>. 100 % local, ton G-code ne quitte pas le navigateur.</div>
 
   <div class="grid">
     <!-- LEFT : gcode upload + stats + layer preview -->
@@ -213,10 +222,30 @@ footer .disc{max-width:640px;margin:0 auto 10px;}
         <div class="gstat"><div class="k">Slicer</div><div class="v" id="g-slicer">—</div></div>
       </div>
       <div class="fld" style="margin-top:14px">
-        <label>Aperçu de la couche <span class="layer-lbl" id="glabel">—</span></label>
+        <label>Aperçu — couche <span class="layer-lbl" id="glabel">—</span></label>
         <input type="range" id="gslider" min="1" max="1" step="1" value="1" disabled>
       </div>
+      <div class="row-btn" style="justify-content:flex-start;margin-top:10px">
+        <button class="btn seg active" id="gview2d">Couche 2D</button>
+        <button class="btn seg" id="gview3d">Trajectoires 3D</button>
+        <label class="trv" id="gtravelwrap" style="display:none"><input type="checkbox" id="gtravel"> déplacements</label>
+      </div>
       <canvas id="gcanvas"></canvas>
+      <div id="g3dwrap" style="display:none">
+        <div id="g3d"></div>
+        <div class="hint">glisser = tourner · molette = zoom</div>
+        <div class="g3dlegend">
+          <span class="chip"><i style="background:#2997ff"></i>paroi ext.</span>
+          <span class="chip"><i style="background:#64d2ff"></i>paroi int.</span>
+          <span class="chip"><i style="background:#ff9f0a"></i>remplissage</span>
+          <span class="chip"><i style="background:#ffd60a"></i>solide / dessus</span>
+          <span class="chip"><i style="background:#bf5af2"></i>support</span>
+          <span class="chip"><i style="background:#ff453a"></i>pont</span>
+          <span class="chip"><i style="background:#30d158"></i>jupe / bord</span>
+          <span class="chip"><i style="background:#9a9aa0"></i>autre</span>
+          <span id="g3dnote" style="color:var(--amber)"></span>
+        </div>
+      </div>
     </div>
 
     <!-- RIGHT : pause insertion -->
@@ -1012,6 +1041,133 @@ function gDraw(n){
   ctx.fillText(`couche ${n}/${GC.layers.length} · Z ≈ ${L.z!=null?L.z.toFixed(2):'?'} mm · ${(mxx-mnx).toFixed(0)}×${(mxy-mny).toFixed(0)} mm`, 14, h-12);
 }
 
+// ── Aperçu 3D des trajectoires ──────────────────────────────────────────────
+// Les segments d'extrusion sont accumulés DANS L'ORDRE DES COUCHES, avec le
+// compte de sommets au début de chaque couche : le slider ne rebâtit rien,
+// il déplace juste le drawRange des LineSegments (coût ~zéro).
+const GTYPE_COLORS={outer:0x2997ff,inner:0x64d2ff,infill:0xff9f0a,solid:0xffd60a,support:0xbf5af2,bridge:0xff453a,skirt:0x30d158,other:0x9a9aa0};
+const GT_RGB=Object.fromEntries(Object.entries(GTYPE_COLORS).map(([k,v])=>[k,[(v>>16&255)/255,(v>>8&255)/255,(v&255)/255]]));
+function gTypeKey(str){
+  const t=str.toLowerCase();
+  if(/outer|external/.test(t)) return 'outer';
+  if(/bridge|overhang/.test(t)) return 'bridge';
+  if(/support/.test(t)) return 'support';
+  if(/skirt|brim/.test(t)) return 'skirt';
+  if(/solid|top|bottom|skin|surface/.test(t)) return 'solid';
+  if(/fill/.test(t)) return 'infill';
+  if(/wall|perimeter/.test(t)) return 'inner';
+  return 'other';
+}
+const G3D_MAXSEG=500000; // plafond de segments d'extrusion (gros fichiers)
+let G3D=null;            // {posE,colE,posT,startVertE,startVertT,truncatedLayer}
+function gBuild3D(){
+  const st={x:0,y:0,z:0,e:0,absXY:true,absE:true};
+  const posE=[],colE=[],posT=[];
+  const startVertE=[],startVertT=[];
+  const lines=GC.lines, layers=GC.layers;
+  let li=0, cur=GT_RGB.other, truncatedLayer=0, segs=0;
+  for(let i=0;i<lines.length;i++){
+    if(li<layers.length && i===layers[li].idx){ startVertE[li]=posE.length/3; startVertT[li]=posT.length/3; li++; }
+    const raw=lines[i]; if(!raw) continue;
+    if(raw.charCodeAt(0)===59){
+      const m=/^;\s*(?:TYPE|FEATURE)\s*:\s*(.+)/i.exec(raw);
+      if(m) cur=GT_RGB[gTypeKey(m[1])];
+      continue;
+    }
+    const ci=raw.indexOf(';'); const s=ci>=0?raw.slice(0,ci):raw;
+    const cmd=gCode(s); if(!cmd) continue;
+    const mv=gStep(st,cmd,s);
+    if(!mv) continue;
+    if(mv.de>0){
+      if(segs>=G3D_MAXSEG){ if(!truncatedLayer) truncatedLayer=li; continue; }
+      segs++;
+      posE.push(mv.px,mv.py,st.z, st.x,st.y,st.z);
+      colE.push(cur[0],cur[1],cur[2], cur[0],cur[1],cur[2]);
+    } else if(mv.px!==st.x||mv.py!==st.y){
+      if(posT.length<G3D_MAXSEG*3) posT.push(mv.px,mv.py,st.z, st.x,st.y,st.z);
+    }
+  }
+  // centre + normalise sur la bbox des extrusions (les travels suivent la même transformation)
+  if(posE.length){
+    let mn=[1e9,1e9,1e9],mx=[-1e9,-1e9,-1e9];
+    for(let i=0;i<posE.length;i+=3) for(let k=0;k<3;k++){ const v=posE[i+k]; if(v<mn[k])mn[k]=v; if(v>mx[k])mx[k]=v; }
+    const c=[(mn[0]+mx[0])/2,(mn[1]+mx[1])/2,(mn[2]+mx[2])/2];
+    const r=Math.max(1e-6,Math.hypot(mx[0]-mn[0],mx[1]-mn[1],mx[2]-mn[2])/2);
+    const tf=a=>{ for(let i=0;i<a.length;i+=3){ a[i]=(a[i]-c[0])/r; a[i+1]=(a[i+1]-c[1])/r; a[i+2]=(a[i+2]-c[2])/r; } };
+    tf(posE); tf(posT);
+  }
+  return {posE,colE,posT,startVertE,startVertT,truncatedLayer};
+}
+// Viewer 3D dédié (indépendant du viewer STL), créé au premier affichage.
+let g3r=null;
+function g3dInit(){
+  if(g3r) return;
+  const el=$('g3d');
+  const renderer=new THREE.WebGLRenderer({antialias:true,alpha:true});
+  const scene=new THREE.Scene();
+  const cam=new THREE.PerspectiveCamera(45,1,0.01,100);
+  const group=new THREE.Group(); group.rotation.x=-Math.PI/2; scene.add(group); // Z-up gcode → Y-up écran
+  g3r={renderer,scene,cam,group,lineE:null,lineT:null,rot:{x:0.9,y:0.6},dist:2.6,drag:false,lx:0,ly:0};
+  renderer.domElement.style.cursor='grab'; el.appendChild(renderer.domElement);
+  renderer.domElement.addEventListener('pointerdown',e=>{g3r.drag=true;g3r.lx=e.clientX;g3r.ly=e.clientY;renderer.domElement.style.cursor='grabbing';});
+  addEventListener('pointerup',()=>{ if(g3r){g3r.drag=false;renderer.domElement.style.cursor='grab';} });
+  addEventListener('pointermove',e=>{ if(!g3r||!g3r.drag)return; g3r.rot.y+=(e.clientX-g3r.lx)*.01; g3r.rot.x=Math.max(-1.5,Math.min(1.5,g3r.rot.x+(e.clientY-g3r.ly)*.01)); g3r.lx=e.clientX; g3r.ly=e.clientY; });
+  renderer.domElement.addEventListener('wheel',e=>{e.preventDefault(); g3r.dist=Math.max(0.5,Math.min(8,g3r.dist*(1+Math.sign(e.deltaY)*.1)));},{passive:false});
+  addEventListener('resize',g3dSize);
+  (function loop(){ requestAnimationFrame(loop);
+    if(!g3r || el.offsetParent===null) return;               // caché → pas de rendu
+    const r=g3r.dist, ro=g3r.rot;
+    cam.position.set(Math.sin(ro.y)*Math.cos(ro.x)*r, Math.sin(ro.x)*r, Math.cos(ro.y)*Math.cos(ro.x)*r);
+    cam.lookAt(0,0,0); renderer.render(scene,cam);
+  })();
+}
+function g3dSize(){
+  if(!g3r) return;
+  const el=$('g3d'); const w=el.clientWidth||600,h=el.clientHeight||300;
+  g3r.renderer.setSize(w,h); g3r.renderer.setPixelRatio(Math.min(2,devicePixelRatio));
+  g3r.cam.aspect=w/h; g3r.cam.updateProjectionMatrix();
+}
+function g3dRefresh(){
+  if(!g3r) return;
+  for(const k of ['lineE','lineT']){ if(g3r[k]){ g3r.group.remove(g3r[k]); g3r[k].geometry.dispose(); g3r[k].material.dispose(); g3r[k]=null; } }
+  if(!G3D) return; // invalidé → scène vidée en attendant le prochain build
+  if(G3D.posE.length){
+    const ge=new THREE.BufferGeometry();
+    ge.setAttribute('position',new THREE.Float32BufferAttribute(G3D.posE,3));
+    ge.setAttribute('color',new THREE.Float32BufferAttribute(G3D.colE,3));
+    g3r.lineE=new THREE.LineSegments(ge,new THREE.LineBasicMaterial({vertexColors:true}));
+    g3r.group.add(g3r.lineE);
+  }
+  if(G3D.posT.length){
+    const gt=new THREE.BufferGeometry();
+    gt.setAttribute('position',new THREE.Float32BufferAttribute(G3D.posT,3));
+    g3r.lineT=new THREE.LineSegments(gt,new THREE.LineBasicMaterial({color:0x6a6a6e,transparent:true,opacity:.35}));
+    g3r.group.add(g3r.lineT);
+  }
+  $('g3dnote').textContent=G3D.truncatedLayer?`⚠️ fichier très lourd — aperçu limité aux ${G3D.truncatedLayer} premières couches`:'';
+}
+function g3dEnsureData(){ if(!G3D&&GC){ G3D=gBuild3D(); g3dRefresh(); } }
+function g3dSetLayer(n){
+  if(!g3r||!G3D) return;
+  const cut=(sv,total)=>n<sv.length?sv[n]:total;
+  if(g3r.lineE) g3r.lineE.geometry.setDrawRange(0,cut(G3D.startVertE,G3D.posE.length/3));
+  if(g3r.lineT){ g3r.lineT.visible=$('gtravel').checked; g3r.lineT.geometry.setDrawRange(0,cut(G3D.startVertT,G3D.posT.length/3)); }
+}
+let GVIEW='2d';
+function setGView(v){
+  GVIEW=v;
+  $('gview2d').classList.toggle('active',v==='2d');
+  $('gview3d').classList.toggle('active',v==='3d');
+  $('gcanvas').style.display=v==='2d'?'block':'none';
+  $('g3dwrap').style.display=v==='3d'?'block':'none';
+  $('gtravelwrap').style.display=v==='3d'?'inline-flex':'none';
+  if(v==='3d'){ g3dInit(); g3dEnsureData(); g3dSize(); g3dSetLayer(+$('gslider').value); }
+  else gDraw(+$('gslider').value);
+}
+$('gview2d').onclick=()=>setGView('2d');
+$('gview3d').onclick=()=>setGView('3d');
+$('gtravel').addEventListener('input',()=>g3dSetLayer(+$('gslider').value));
+
 // ── UI G-code ───────────────────────────────────────────────────────────────
 function gFmtTime(sec){ if(!sec) return '—'; const hh=Math.floor(sec/3600), mm=Math.round(sec%3600/60); return hh?`${hh} h ${mm.toString().padStart(2,'0')}`:`${mm} min`; }
 function gRefreshPlan(){
@@ -1052,6 +1208,7 @@ function gLoadText(text, name){
   GC=gParse(text);
   if(!GC.layers.length){ alert('Aucune couche détectée dans ce fichier — est-ce bien un G-code d\'impression 3D ?'); GC=null; return; }
   GOPS=[]; gRenderOps();
+  G3D=null; g3dRefresh(); // invalide l'aperçu 3D du fichier précédent
   gShowStats();
   const sl=$('gslider'); sl.disabled=false; sl.max=GC.layers.length;
   sl.value=Math.min(GC.layers.length, Math.max(2, Math.ceil(GC.layers.length/2)));
@@ -1066,7 +1223,8 @@ function gLoadText(text, name){
 function gSync(){
   const n=+$('gslider').value;
   $('glabel').textContent=GC?`${n} / ${GC.layers.length} — Z ≈ ${GC.layers[n-1].z!=null?GC.layers[n-1].z.toFixed(2):'?'} mm`:'—';
-  gDraw(n); gRefreshPlan();
+  if(GVIEW==='3d'){ g3dEnsureData(); g3dSetLayer(n); } else gDraw(n);
+  gRefreshPlan();
 }
 $('gslider').addEventListener('input',()=>{ $('glayers').value=$('gslider').value; gSync(); });
 $('glayers').addEventListener('input',()=>{ const l=gLayerList(); if(l.length) $('gslider').value=l[0]; gSync(); });
@@ -1128,6 +1286,7 @@ function gDemoText(){
     L.push(`;LAYER:${n}`);
     L.push(`G0 Z${(0.2*(n+1)).toFixed(2)} F900`);
     for(let k=0;k<3;k++){
+      L.push(k===0?';TYPE:WALL-OUTER':';TYPE:WALL-INNER');
       const o=80+k*0.8, side=40-k*1.6;
       let x=o,y=o;
       L.push(`G0 X${x} Y${y} F6000`);
@@ -1136,6 +1295,12 @@ function gDemoText(){
         L.push(`G1 X${x.toFixed(2)} Y${y.toFixed(2)} E${e.toFixed(4)} F1800`);
       }
     }
+    L.push(';TYPE:FILL');
+    for(let f=0;f<5;f++){ // remplissage : lignes verticales espacées dans le carré intérieur
+      const fx=(86+f*6).toFixed(2), y0=n%2?86:114, y1=n%2?114:86;
+      L.push(`G0 X${fx} Y${y0} F6000`);
+      e+=28*EPM; L.push(`G1 X${fx} Y${y1} E${e.toFixed(4)} F2400`);
+    }
   }
   L.push('M104 S0','M140 S0','G91','G1 Z10 F900','G90','M84');
   L.push(`;Filament used: ${(e/1000).toFixed(3)}m`);
@@ -1143,7 +1308,8 @@ function gDemoText(){
 }
 $('gdemo').onclick=()=>gLoadText(gDemoText(),'exemple-cube.gcode');
 // petite API de debug/power-users (console) — volontairement exposée
-window.PrintChecker={gParse,gPauseBlock,gApply,gEdits,gSafety};
+window.PrintChecker={gParse,gPauseBlock,gApply,gEdits,gSafety,
+  get _3d(){ return {data:G3D, viewer:g3r}; }};
 
 // init
 sizeView(); frame();
