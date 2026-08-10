@@ -104,6 +104,17 @@ input[type=text].gtxt{width:100%;background:#141416;color:var(--txt);border:.5px
 #gverdict{margin-left:10px;vertical-align:middle;font-size:12px;}
 #s-elec{margin-top:10px;font-size:12.5px;color:var(--dim2);}
 
+/* Trancheuse */
+.sechead .g4{background:linear-gradient(90deg,#bf5af2,#2997ff 70%);-webkit-background-clip:text;background-clip:text;color:transparent;}
+.slgrid{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+.slgrid .fld label{display:block;font-size:11px;color:var(--dim2);margin-bottom:5px;}
+.slgrid input[type=number]{width:100%;background:#141416;color:var(--txt);border:.5px solid var(--sep);border-radius:10px;padding:8px 10px;font:14px var(--mono);}
+.slgrid input[type=range]{width:100%;accent-color:var(--blue);}
+textarea.slcode{width:100%;height:118px;background:#141416;color:var(--txt);border:.5px solid var(--sep);border-radius:10px;padding:9px 11px;font:12px/1.5 var(--mono);resize:vertical;display:block;}
+.slbar{height:6px;border-radius:99px;background:rgba(255,255,255,.09);overflow:hidden;margin-top:12px;display:none;}
+.slbar i{display:block;height:100%;width:0;background:linear-gradient(90deg,#bf5af2,#2997ff);transition:width .12s linear;}
+.slwarn{margin-top:12px;padding:10px 12px;background:rgba(255,159,10,.10);border:1px solid rgba(255,159,10,.25);border-radius:10px;color:var(--dim);font-size:12.5px;line-height:1.5;}
+
 /* Photogrammétrie */
 #matpreview{margin-top:14px;background:#fff;border-radius:14px;padding:10px;}
 #matpreview svg{width:100%;height:auto;display:block;}
@@ -205,6 +216,69 @@ footer .disc{max-width:640px;margin:0 auto 10px;}
     </div>
   </div>
 
+  <!-- ── TRANCHEUSE ────────────────────────────────────────────────────── -->
+  <h2 class="sechead"><span class="g4">Trancher — du modèle au G-code</span></h2>
+  <div class="secsub">Un <b>vrai tranchage</b>, entièrement dans ton navigateur : périmètres, couches pleines dessus/dessous, remplissage, jupe, rétraction. Le G-code produit est immédiatement rechargé dans la boîte à outils ci-dessous — il passe donc son propre <b>contrôle de sécurité prévol</b>. <b>Sans supports</b> : regarde d'abord les surplombs en carte 3.</div>
+
+  <div class="grid">
+    <!-- LEFT : réglages de tranchage -->
+    <div class="card">
+      <h2>4 · Réglages de tranchage</h2>
+      <div class="slgrid">
+        <div class="fld"><label>Hauteur de couche <span class="infl" id="sl-lhv">0.20 mm</span></label>
+          <input type="range" id="sl-lh" min="0.06" max="0.4" step="0.02" value="0.2"></div>
+        <div class="fld"><label>Première couche <span class="infl" id="sl-flhv">0.25 mm</span></label>
+          <input type="range" id="sl-flh" min="0.1" max="0.4" step="0.05" value="0.25"></div>
+        <div class="fld"><label>Diamètre de buse</label>
+          <select id="sl-noz">
+            <option value="0.25">0,25 mm</option>
+            <option value="0.4" selected>0,40 mm</option>
+            <option value="0.6">0,60 mm</option>
+            <option value="0.8">0,80 mm</option>
+          </select></div>
+        <div class="fld"><label>Couches pleines dessus/dessous <span class="infl" id="sl-tbv">4</span></label>
+          <input type="range" id="sl-tb" min="1" max="8" step="1" value="4"></div>
+        <div class="fld"><label>Vitesse périmètres (mm/s)</label><input type="number" id="sl-vper" min="5" max="300" value="40"></div>
+        <div class="fld"><label>Vitesse remplissage (mm/s)</label><input type="number" id="sl-vfill" min="5" max="400" value="60"></div>
+        <div class="fld"><label>Vitesse 1<sup>re</sup> couche (mm/s)</label><input type="number" id="sl-vfirst" min="1" max="100" value="20"></div>
+        <div class="fld"><label>Vitesse déplacements (mm/s)</label><input type="number" id="sl-vtrav" min="10" max="600" value="120"></div>
+        <div class="fld"><label>Rétraction (mm)</label><input type="number" id="sl-ret" min="0" max="10" step="0.1" value="1.5"></div>
+        <div class="fld"><label>Vitesse rétraction (mm/s)</label><input type="number" id="sl-retv" min="5" max="120" value="35"></div>
+        <div class="fld"><label>Boucles de jupe</label><input type="number" id="sl-skirt" min="0" max="5" value="2"></div>
+        <div class="fld"><label>Écart de jupe (mm)</label><input type="number" id="sl-skirtgap" min="0" max="20" step="0.5" value="3"></div>
+      </div>
+      <div class="gplan" id="sl-derived"></div>
+    </div>
+
+    <!-- RIGHT : machine, scripts, lancement -->
+    <div class="card">
+      <h2>5 · Machine, températures et scripts</h2>
+      <div class="slgrid">
+        <div class="fld"><label>Température buse (°C)</label><input type="number" id="sl-tn" min="0" max="320" value="210"></div>
+        <div class="fld"><label>Température plateau (°C)</label><input type="number" id="sl-tb2" min="0" max="140" value="60"></div>
+        <div class="fld"><label>Ventilation (%)</label><input type="number" id="sl-fan" min="0" max="100" value="100"></div>
+        <div class="fld"><label>Ventilation à partir de la couche</label><input type="number" id="sl-fanl" min="1" max="50" value="2"></div>
+        <div class="fld" style="grid-column:1/-1"><label>Modèle de scripts start/end</label>
+          <select id="sl-preset">
+            <option value="marlin" selected>Marlin générique (Creality, Prusa, Artillery…)</option>
+            <option value="klipper">Klipper (macros START_PRINT / END_PRINT)</option>
+            <option value="bambu">Bambu Lab (à coller depuis Bambu Studio)</option>
+          </select></div>
+        <div class="fld" style="grid-column:1/-1"><label>Start G-code — exécuté avant la première couche</label>
+          <textarea class="slcode" id="sl-start" spellcheck="false"></textarea></div>
+        <div class="fld" style="grid-column:1/-1"><label>End G-code — exécuté après la dernière couche</label>
+          <textarea class="slcode" id="sl-end" spellcheck="false"></textarea></div>
+      </div>
+      <div class="slwarn">⚠️ Les scripts start/end sont <b>propres à ta machine</b> : le modèle générique ci-dessus homing + chauffe + ligne d'amorce convient aux Marlin classiques, mais une Bambu ou une Klipper attendent leurs propres macros — colle celles de ton slicer habituel. Le fichier produit passe ensuite au contrôle prévol (carte 8), qui vérifie homing, hors-plateau, extrusion à froid et chauffages coupés.</div>
+      <div class="export-row">
+        <button class="btn pri" id="sl-go">✂︎ Trancher le modèle</button>
+        <button class="btn export" id="sl-dl" disabled style="margin-left:8px">⬇︎ Télécharger le G-code</button>
+      </div>
+      <div class="slbar" id="sl-bar"><i></i></div>
+      <div class="gplan" id="sl-res">Règle tes paramètres puis lance le tranchage — le G-code obtenu est chargé automatiquement dans la boîte à outils ci-dessous.</div>
+    </div>
+  </div>
+
   <!-- ── BOÎTE À OUTILS G-CODE ─────────────────────────────────────────── -->
   <h2 class="sechead"><span class="g">Boîte à outils G-code</span></h2>
   <div class="secsub">Visualise tes trajectoires en <b>3D</b> (colorées par type : parois, remplissage, supports…), passe ton G-code au <b>contrôle de sécurité prévol</b> (hors plateau, extrusion à froid, chauffages, firmware), puis modifie-le : <b>pause</b>, <b>changement de filament</b>, <b>température ou ventilation par plage de couches</b>. 100 % local, ton G-code ne quitte pas le navigateur.</div>
@@ -212,7 +286,7 @@ footer .disc{max-width:640px;margin:0 auto 10px;}
   <div class="grid">
     <!-- LEFT : gcode upload + stats + layer preview -->
     <div class="card">
-      <h2>4 · Ton G-code</h2>
+      <h2>6 · Ton G-code</h2>
       <div id="gdrop">
         <div class="big">⚙️</div>
         <div class="t">Dépose un fichier G-code ici</div>
@@ -260,7 +334,7 @@ footer .disc{max-width:640px;margin:0 auto 10px;}
 
     <!-- RIGHT : pause insertion -->
     <div class="card">
-      <h2>5 · Modifier : pause, filament, températures</h2>
+      <h2>7 · Modifier : pause, filament, températures</h2>
       <div class="ctrls" style="margin-top:0">
         <div class="fld" style="grid-column:1/-1"><label>Firmware de la machine — <b>obligatoire</b> avant modification (les commandes valides en dépendent)</label>
           <select id="gfw">
@@ -303,7 +377,7 @@ footer .disc{max-width:640px;margin:0 auto 10px;}
 
     <!-- FULL WIDTH : safety preflight -->
     <div class="card" style="grid-column:1/-1">
-      <h2>6 · Contrôle de sécurité prévol <span class="badge" id="gverdict" style="display:none"></span></h2>
+      <h2>8 · Contrôle de sécurité prévol <span class="badge" id="gverdict" style="display:none"></span></h2>
       <div id="gsafety"><div class="empty">Charge un G-code pour lancer le contrôle prévol (hors plateau, homing, extrusion à froid, chauffages, modes G90/G91, compatibilité firmware).</div></div>
     </div>
   </div>
@@ -315,7 +389,7 @@ footer .disc{max-width:640px;margin:0 auto 10px;}
   <div class="grid">
     <!-- LEFT : capture guide -->
     <div class="card">
-      <h2>7 · Bien capturer ton objet (photos ou vidéo)</h2>
+      <h2>9 · Bien capturer ton objet (photos ou vidéo)</h2>
       <div class="risk"><div class="ic">📷</div><div class="body"><b>30 à 60 photos qui se chevauchent (60–80 %)</b><div class="d">Fais le tour complet à 3 hauteurs (vue basse, à niveau, plongée), une photo tous les 10–15°. Chaque détail doit apparaître sur au moins 3 photos.</div></div></div>
       <div class="risk"><div class="ic">💡</div><div class="body"><b>Lumière douce et constante</b><div class="d">Ciel voilé, lightbox ou pièce bien éclairée. Jamais de flash, pas d'ombres dures, et verrouille l'exposition : la luminosité ne doit pas changer pendant le tour.</div></div></div>
       <div class="risk"><div class="ic">🎯</div><div class="body"><b>Netteté avant tout</b><div class="d">Focale fixe (pas de zoom en cours de route), ISO bas, f/8–f/11 si réglable, appareil stable. Une photo floue est pire qu'une photo manquante — supprime-les.</div></div></div>
@@ -328,7 +402,7 @@ footer .disc{max-width:640px;margin:0 auto 10px;}
 
     <!-- RIGHT : printable scale mat -->
     <div class="card">
-      <h2>8 · Planche d'échelle à imprimer (A4)</h2>
+      <h2>10 · Planche d'échelle à imprimer (A4)</h2>
       <div class="gnote" style="margin-top:0">
         ① <b>Imprime à 100 %</b> (« taille réelle » — jamais « ajuster à la page »), A4 portrait.<br>
         ② <b>Vérifie l'impression</b> : la barre doit mesurer <b>100,0 mm</b> au réglet, OU pose une carte bancaire sur le cadre en bas — elle doit le couvrir exactement. Si écart : corrige l'échelle d'impression avant usage.<br>
@@ -344,7 +418,7 @@ footer .disc{max-width:640px;margin:0 auto 10px;}
   </div>
 
   <footer>
-    <div class="disc">Estimations indicatives (débit ~10 mm³/s, modèle coque+remplissage pour le FDM ; nb de couches × cure pour la résine/cire castable) — pas un slicer réel. Le calcul de paroi minimale exacte nécessite un slicing. Import multi-format (OBJ, 3MF, GLTF/GLB, FBX, DAE...) fait entièrement dans ton navigateur — aucun fichier n'est envoyé à un serveur. Les formats CAO paramétriques (STEP, IGES) ne sont pas encore supportés. La boîte à outils G-code lit et modifie ton fichier entièrement en local (rien n'est envoyé). Le contrôle de sécurité est indicatif : il détecte les erreurs les plus dangereuses mais ne remplace ni ton slicer ni ta vigilance — reste à proximité de la machine pour une première impression modifiée.</div>
+    <div class="disc">Les estimations de la <b>carte 2</b> restent indicatives et instantanées (débit ~10 mm³/s, modèle coque+remplissage pour le FDM ; nb de couches × cure pour la résine/cire castable) : ce n'est pas un tranchage. Pour des chiffres réels — temps, filament, coût — utilise la <b>trancheuse</b> (cartes 4-5), qui tranche vraiment le maillage ; elle ne gère en revanche ni supports, ni ponts, ni parois plus fines que la buse, et ne remplace pas un slicer de production. Import multi-format (OBJ, 3MF, GLTF/GLB, FBX, DAE...) fait entièrement dans ton navigateur — aucun fichier n'est envoyé à un serveur. Les formats CAO paramétriques (STEP, IGES) ne sont pas encore supportés. La boîte à outils G-code lit et modifie ton fichier entièrement en local (rien n'est envoyé). Le contrôle de sécurité est indicatif : il détecte les erreurs les plus dangereuses mais ne remplace ni ton slicer ni ta vigilance — reste à proximité de la machine pour une première impression modifiée.</div>
     Moteur de calcul dérivé de <b>General Design Studio</b>. · Un outil DELIGNY.
   </footer>
 </div>
@@ -372,7 +446,7 @@ footer .disc{max-width:640px;margin:0 auto 10px;}
     <b>Actions recommandées</b>
     <div id="r-actionlist"></div>
   </div>
-  <div class="r-foot">Estimations indicatives, pas un slicer réel · Généré localement, aucune donnée envoyée · Un outil DELIGNY R&D</div>
+  <div class="r-foot">Estimations indicatives (carte 2, hors tranchage) · Généré localement, aucune donnée envoyée · Un outil DELIGNY R&D</div>
 </div>
 
 <!-- Planche photogrammétrie imprimable — remplie par scaleMatSVG(), visible seulement à l'impression (body.print-mat) -->
@@ -396,13 +470,16 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 // Groupes déclarés séparément (FDM filament vs résine/cire coulée) pour peupler
 // les <select> avec des <optgroup> — les deux familles ne se calculent pas pareil
 // (voir castable:true plus bas, qui désactive le "temps" FDM pour la résine/cire).
+// `nozzleC`/`bedC`/`fan` = consignes de départ proposées par la tranchesuse
+// (ordres de grandeur usuels du matériau, pas une fiche technique de marque) —
+// toujours modifiables dans la carte 5 avant de trancher.
 const MATERIAL_GROUPS = [
   { label:"Filament FDM", items:{
-    PLA:  { density:1.24, priceKg:22, label:"PLA" },
-    PETG: { density:1.27, priceKg:25, label:"PETG" },
-    ABS:  { density:1.04, priceKg:24, label:"ABS" },
-    ASA:  { density:1.07, priceKg:30, label:"ASA (UV/ext.)" },
-    TPU:  { density:1.21, priceKg:35, label:"TPU (souple)" },
+    PLA:  { density:1.24, priceKg:22, label:"PLA",           nozzleC:210, bedC:60,  fan:100 },
+    PETG: { density:1.27, priceKg:25, label:"PETG",          nozzleC:240, bedC:80,  fan:50  },
+    ABS:  { density:1.04, priceKg:24, label:"ABS",           nozzleC:250, bedC:100, fan:0   },
+    ASA:  { density:1.07, priceKg:30, label:"ASA (UV/ext.)", nozzleC:255, bedC:100, fan:0   },
+    TPU:  { density:1.21, priceKg:35, label:"TPU (souple)",  nozzleC:230, bedC:40,  fan:60  },
   }},
   { label:"Résine / cire — cire perdue (casting bijouterie)", items:{
     RESIN_CASTABLE: { density:1.10, priceKg:90,  label:"Résine castable (SLA/DLP)", castable:true },
@@ -416,12 +493,14 @@ const MATERIALS = Object.assign({}, ...MATERIAL_GROUPS.map(g=>g.items));
 const PRINTER_GROUPS = [
   // `flow` = débit volumique max soutenable du hotend (mm³/s, ordre de grandeur
   // constructeur) — sert au contrôle prévol du G-code.
+  // `fdm:true` = machine à filament : seule famille que la trancheuse intégrée
+  // sait traiter (la résine se pilote en fichiers de couches, pas en G-code).
   { label:"FDM (filament)", items:{
-    bambu_a1:    { name:"Bambu Lab A1",      bed:[256,256,256], watts:95,  flow:28 },
-    bambu_a1mini:{ name:"Bambu Lab A1 mini", bed:[180,180,180], watts:80,  flow:28 },
-    prusa_mk4:   { name:"Prusa MK4",         bed:[250,210,220], watts:105, flow:23 },
-    ender3:      { name:"Creality Ender-3",  bed:[220,220,250], watts:120, flow:12 },
-    x1c:         { name:"Bambu Lab X1C",     bed:[256,256,256], watts:140, flow:32 },
+    bambu_a1:    { name:"Bambu Lab A1",      bed:[256,256,256], watts:95,  flow:28, fdm:true },
+    bambu_a1mini:{ name:"Bambu Lab A1 mini", bed:[180,180,180], watts:80,  flow:28, fdm:true },
+    prusa_mk4:   { name:"Prusa MK4",         bed:[250,210,220], watts:105, flow:23, fdm:true },
+    ender3:      { name:"Creality Ender-3",  bed:[220,220,250], watts:120, flow:12, fdm:true },
+    x1c:         { name:"Bambu Lab X1C",     bed:[256,256,256], watts:140, flow:32, fdm:true },
   }},
   { label:"Résine (SLA/DLP, format bijouterie)", items:{
     photon_mono: { name:"Anycubic Photon Mono", bed:[130,80,165], watts:45 },
@@ -750,7 +829,9 @@ function showMesh(tris){
 }
 
 // ── Pipeline : charger → analyser → afficher ────────────────────────────────
-let G=null, RAW=null, curFileName='Modèle 3D', MODELHASH=null;
+// SCALED = triangles à l'échelle réelle (mm) = ce que voit la trancheuse ;
+// RAW reste le fichier brut, dans son unité d'origine.
+let G=null, RAW=null, SCALED=null, curFileName='Modèle 3D', MODELHASH=null;
 async function sha256hex(data){
   const buf=typeof data==='string'?new TextEncoder().encode(data):data;
   const h=await crypto.subtle.digest('SHA-256',buf);
@@ -768,6 +849,7 @@ function update(){
   if(!RAW) return;
   const factor=UNIT_FACTORS[$('unit').value]||1;
   const scaled=scaleTris(RAW, factor);
+  SCALED=scaled;
   G=analyze(scaled);
   if(!MH||MH._f!==factor){ MH=meshHealth(scaled); MH._f=factor; } // topologie : recalcul seulement si le fichier/l'unité change
   const est=estimate(G,$('printer').value,$('material').value,+$('infill').value,+$('wall').value);
@@ -789,6 +871,8 @@ function update(){
   const R=[...(MH?meshRows(MH):[]), ...risks(G,est)];
   $('risks').innerHTML=R.map(([ic,cl,t,d])=>`<div class="risk ${cl}"><div class="ic">${ic}</div><div class="body"><b>${t}</b><div class="d">${d}</div></div></div>`).join('');
   const exp=$('export'); exp.disabled=false; exp.classList.add('ready');
+  slSync();   // la trancheuse dépend du modèle courant (cotes, volume, surplombs) : un
+              // nouveau fichier doit rafraîchir ses garde-fous, pas seulement les réglages
 }
 
 // ── Rapport imprimable (atelier — utile, pas joli) ──────────────────────────
@@ -828,7 +912,9 @@ function buildReport(){
 }
 $('export').onclick=()=>{ if(!G) return; buildReport(); window.print(); };
 ['printer','material','infill','wall','unit'].forEach(id=>$(id).addEventListener('input',()=>{
-  $('inflv').textContent=$('infill').value+' %'; $('wallv').textContent=(+$('wall').value).toFixed(1)+' mm'; update();
+  $('inflv').textContent=$('infill').value+' %'; $('wallv').textContent=(+$('wall').value).toFixed(1)+' mm';
+  update();   // update() rafraîchit la trancheuse : elle lit paroi/remplissage/machine
+              // dans la carte 1, une seule source de vérité pour toute la page
 }));
 
 // upload — dispatch par extension, tout reste local au navigateur
@@ -944,7 +1030,7 @@ function gParse(text){
       else if((m=/^;Filament used:\s*([\d.]+)\s*m/i.exec(raw))) stats.filamentM=+m[1];
       else if((m=/filament used \[mm\]\s*=\s*([\d.]+)/i.exec(raw))) stats.filamentM=+m[1]/1000;
       else if((m=/filament used \[g\]\s*=\s*([\d.]+)/i.exec(raw))) stats.filamentG=+m[1];
-      else if(!stats.slicer&&(m=/(Cura_SteamEngine|PrusaSlicer|OrcaSlicer|BambuStudio|Simplify3D|ideaMaker|Slic3r|KISSlicer|PrintChecker-Demo)/i.exec(raw))) stats.slicer=m[1].replace('_SteamEngine','');
+      else if(!stats.slicer&&(m=/(Cura_SteamEngine|PrusaSlicer|OrcaSlicer|BambuStudio|Simplify3D|ideaMaker|Slic3r|KISSlicer|PrintChecker-Slicer|PrintChecker-Demo)/i.exec(raw))) stats.slicer=m[1].replace('_SteamEngine','');
       continue;
     }
     const ci=raw.indexOf(';'); const s=ci>=0?raw.slice(0,ci):raw;
@@ -963,12 +1049,15 @@ function gParse(text){
       const dist=Math.hypot(st.x-mv.px, st.y-mv.py);
       const sec=(dist>0&&st.f>0)?dist/(st.f/60):0;
       if(sec&&layers.length) layerTimes[layers.length-1]=(layerTimes[layers.length-1]||0)+sec;
+      // Consommation NETTE : on additionne aussi les deltas négatifs, sinon
+      // chaque ré-amorçage après rétraction est compté comme de la matière
+      // déposée (une pièce très rétractée doublait son métrage annoncé).
+      safe.filamentMm+=mv.de;
       if(mv.de>0){
         if(dist>0.2&&sec>0){
           const flow=mv.de*FIL_AREA/sec;      // mm³/s réellement demandés au hotend
           if(flow>safe.maxFlow){ safe.maxFlow=flow; safe.maxFlowLayer=layers.length; }
         }
-        safe.filamentMm+=mv.de;
         if(st.tempN<170) safe.coldE=true;
         if(st.z>stats.maxZ) stats.maxZ=st.z;
         const L=layers[layers.length-1];
@@ -1071,7 +1160,7 @@ function gSafety(){
     if(fw){ const bad=pl.filter(([k])=>!fw.pause.includes(k));
       if(bad.length) rows.push(['⚠️','warn',`Pauses incompatibles avec ${fw.name}`,bad.map(([k])=>GMODE_LABEL(k)).join(', ')+' — ces commandes seraient ignorées ou mal gérées par ce firmware.']); }
   }
-  if(!fw) rows.push(['⚠️','warn','Firmware non renseigné','La compatibilité des commandes n\'est pas vérifiée — sélectionne le firmware dans le panneau 5.']);
+  if(!fw) rows.push(['⚠️','warn','Firmware non renseigné','La compatibilité des commandes n\'est pas vérifiée — sélectionne le firmware dans le panneau 7.']);
   const verdict=rows.some(r=>r[0]==='🚫')?['🔴','À CORRIGER']:rows.some(r=>r[1]==='warn')?['🟠','À VÉRIFIER']:['🟢','PRÊT À IMPRIMER'];
   return {rows, verdict};
 }
@@ -1486,6 +1575,705 @@ function gDemoText(){
   return L.join('\n');
 }
 $('gdemo').onclick=()=>gLoadText(gDemoText(),'exemple-cube.gcode');
+
+// ══ TRANCHEUSE INTÉGRÉE (maillage → G-code, 100 % navigateur) ═══════════════
+// Approche RASTER assumée. Chaque couche est rastérisée (balayage par lignes,
+// règle nonzero) puis on calcule la carte de distance euclidienne EXACTE
+// (Felzenszwalb–Huttenlocher, deux passes 1D) : les périmètres sont les
+// iso-contours de cette carte (marching squares interpolé + Douglas-Peucker),
+// le remplissage des segments clippés sur le masque.
+// POURQUOI ce choix : l'offset polygonal analytique (type Clipper) casse sur
+// les maillages réels — auto-intersections, coques multiples, arêtes ouvertes
+// ou non-manifold, exactement ce que la carte 3 détecte à longueur de journée.
+// Le raster, lui, ne casse jamais : il approxime. Le prix payé est la
+// résolution (le pas de raster), pas la robustesse.
+// LIMITES ASSUMÉES, écrites aussi dans l'en-tête du G-code produit : pas de
+// supports, pas de détection de ponts, pas de parois plus fines que la buse
+// (elles disparaissent — la carte 3 les signale déjà en "détail très fin"),
+// pas de lissage/ironing, pas de hauteur de couche variable, pas d'arc fitting.
+const FIL_D=1.75, FIL_A=Math.PI*(FIL_D/2)*(FIL_D/2);  // 2.405 mm² — section du filament
+// Respiration entre couches. Volontairement PAS setTimeout : le navigateur le
+// borne à 4 ms au premier plan et le bride jusqu'à ~1 s (voire le gèle) dès que
+// l'onglet passe en arrière-plan — un tranchage lancé puis laissé de côté
+// n'avancerait plus. Un message de MessageChannel rend la main à la boucle
+// d'événements (donc au rendu de la barre de progression) sans aucun de ces
+// deux plafonds.
+const _slChan = typeof MessageChannel!=='undefined' ? new MessageChannel() : null;
+function slYield(){
+  return new Promise(r=>{
+    if(!_slChan){ setTimeout(r); return; }
+    _slChan.port1.onmessage=()=>r();
+    _slChan.port2.postMessage(0);
+  });
+}
+// Plafond de pixels par couche : borne la mémoire du tampon glissant ET le coût
+// des grosses pièces (au-delà, le pas de raster s'élargit tout seul — sur une
+// pièce de 15 cm la perte de finesse relative est négligeable).
+const SL_MAXPIX=9e5;
+const SL_MAXLAYERS=4000;
+const SL_BIG=1e9;           // "infini" fini : garde les paraboles de l'EDT calculables
+
+// Triangles → tableaux typés, pièce posée sur le plateau et centrée en XY.
+function slPrepare(tris, bed){
+  let mnx=1e9,mny=1e9,mnz=1e9,mxx=-1e9,mxy=-1e9,mxz=-1e9,vol6=0;
+  for(const t of tris){
+    const [a,b,c]=t;
+    vol6 += a[0]*(b[1]*c[2]-b[2]*c[1]) - a[1]*(b[0]*c[2]-b[2]*c[0]) + a[2]*(b[0]*c[1]-b[1]*c[0]);
+    for(const p of t){
+      if(p[0]<mnx)mnx=p[0]; if(p[0]>mxx)mxx=p[0];
+      if(p[1]<mny)mny=p[1]; if(p[1]>mxy)mxy=p[1];
+      if(p[2]<mnz)mnz=p[2]; if(p[2]>mxz)mxz=p[2];
+    }
+  }
+  const orient=vol6>=0?1:-1;                    // maillage globalement retourné → on rétablit
+  const tx=bed[0]/2-(mnx+mxx)/2, ty=bed[1]/2-(mny+mxy)/2, tz=-mnz;
+  const n=tris.length;
+  const V=new Float64Array(n*9), zlo=new Float64Array(n), zhi=new Float64Array(n), nx=new Float64Array(n), ny=new Float64Array(n);
+  for(let i=0;i<n;i++){
+    const t=tris[i]; let lo=1e9,hi=-1e9;
+    for(let k=0;k<3;k++){
+      const p=t[k], o=i*9+k*3;
+      V[o]=p[0]+tx; V[o+1]=p[1]+ty; V[o+2]=p[2]+tz;
+      if(V[o+2]<lo)lo=V[o+2]; if(V[o+2]>hi)hi=V[o+2];
+    }
+    zlo[i]=lo; zhi[i]=hi;
+    const o=i*9;
+    const ux=V[o+3]-V[o], uy=V[o+4]-V[o+1], uz=V[o+5]-V[o+2];
+    const vx=V[o+6]-V[o], vy=V[o+7]-V[o+1], vz=V[o+8]-V[o+2];
+    nx[i]=(uy*vz-uz*vy)*orient; ny[i]=(uz*vx-ux*vz)*orient;   // composantes XY de la normale
+  }
+  const ord=Array.from({length:n},(_,i)=>i).sort((a,b)=>zlo[a]-zlo[b]);
+  return {V,zlo,zhi,nx,ny,n,ord,
+          box:{x0:mnx+tx,x1:mxx+tx,y0:mny+ty,y1:mxy+ty},
+          size:[mxx-mnx,mxy-mny,mxz-mnz]};
+}
+
+// Intersection triangle × plan z. Convention stricte "sous le plan = pz < z" :
+// un sommet pile sur le plan compte comme au-dessus, ce qui garantit 0 ou
+// exactement 2 arêtes coupées (jamais de segment fantôme sur une face plate).
+function slTriSeg(P,i,z,out){
+  const o=i*9, az=P.V[o+2], bz=P.V[o+5], cz=P.V[o+8];
+  const a=az<z, b=bz<z, c=cz<z;
+  if(a===b&&b===c) return false;
+  const V=P.V; let k=0;
+  const cut=(p,q,pz,qz)=>{ const t=(z-pz)/(qz-pz); out[k++]=V[p]+(V[q]-V[p])*t; out[k++]=V[p+1]+(V[q+1]-V[p+1])*t; };
+  if(a!==b) cut(o,o+3,az,bz);
+  if(b!==c) cut(o+3,o+6,bz,cz);
+  if(c!==a) cut(o+6,o,cz,az);
+  if(k!==4) return false;
+  // Orientation : d = ẑ × n = (-ny, nx) laisse la matière à gauche du segment,
+  // ce qui rend la règle nonzero correcte (trous = contours en sens inverse).
+  if((out[2]-out[0])*(-P.ny[i]) + (out[3]-out[1])*P.nx[i] < 0){
+    const x=out[0],y=out[1]; out[0]=out[2]; out[1]=out[3]; out[2]=x; out[3]=y;
+  }
+  return true;
+}
+
+// Remplissage par balayage de lignes, règle nonzero (tri par insertion : 2 à 20
+// intersections par ligne en pratique, un tri générique coûterait plus cher).
+function slFill(segs, R, mask, bb){
+  mask.fill(0);
+  bb[0]=1e9; bb[1]=-1; bb[2]=1e9; bb[3]=-1;   // i0,i1,j0,j1 de l'emprise remplie
+  const {W,H,x0,y0,px,cnt,off,cx,cd}=R;
+  cnt.fill(0);
+  const ns=segs.length/4;
+  const rowSpan=(ay,by)=>{
+    const lo=ay<by?ay:by, hi=ay<by?by:ay;
+    let j0=Math.ceil((lo-y0)/px-0.5), j1=Math.ceil((hi-y0)/px-0.5)-1;
+    if(j0<0)j0=0; if(j1>H-1)j1=H-1;
+    return [j0,j1];
+  };
+  for(let s=0;s<ns;s++){
+    const ay=segs[s*4+1], by=segs[s*4+3]; if(ay===by) continue;
+    const [j0,j1]=rowSpan(ay,by); for(let j=j0;j<=j1;j++) cnt[j]++;
+  }
+  let tot=0; for(let j=0;j<H;j++){ off[j]=tot; tot+=cnt[j]; }
+  if(tot>cx.length){ R.cx=new Float64Array(tot*2); R.cd=new Int8Array(tot*2); }
+  const CX=R.cx, CD=R.cd, fill=new Int32Array(H);
+  for(let s=0;s<ns;s++){
+    const ax=segs[s*4],ay=segs[s*4+1],bx=segs[s*4+2],by=segs[s*4+3];
+    if(ay===by) continue;
+    const [j0,j1]=rowSpan(ay,by), dir=by>ay?1:-1, inv=(bx-ax)/(by-ay);
+    for(let j=j0;j<=j1;j++){
+      const yr=y0+(j+0.5)*px, p=off[j]+fill[j]++;
+      CX[p]=ax+(yr-ay)*inv; CD[p]=dir;
+    }
+  }
+  for(let j=0;j<H;j++){
+    const b=off[j], n=cnt[j]; if(n<2) continue;
+    for(let a=b+1;a<b+n;a++){                        // tri par insertion sur la ligne
+      const kx=CX[a], kd=CD[a]; let q=a-1;
+      while(q>=b&&CX[q]>kx){ CX[q+1]=CX[q]; CD[q+1]=CD[q]; q--; }
+      CX[q+1]=kx; CD[q+1]=kd;
+    }
+    let w=0, xs=0, base=j*W;
+    for(let a=b;a<b+n;a++){
+      const prev=w; w+=CD[a];
+      if(prev===0&&w!==0) xs=CX[a];
+      else if(prev!==0&&w===0){
+        let i0=Math.ceil((xs-x0)/px-0.5), i1=Math.ceil((CX[a]-x0)/px-0.5)-1;
+        if(i0<0)i0=0; if(i1>W-1)i1=W-1;
+        for(let i=i0;i<=i1;i++) mask[base+i]=1;
+        if(i0<=i1){                       // emprise réelle de la couche → ROI
+          if(i0<bb[0])bb[0]=i0; if(i1>bb[1])bb[1]=i1;
+          if(j<bb[2])bb[2]=j;   if(j>bb[3])bb[3]=j;
+        }
+      }
+    }
+  }
+}
+
+// Transformée de distance 1D exacte (enveloppe inférieure de paraboles).
+function slDt1(f,d,v,zz,n){
+  let k=0; v[0]=0; zz[0]=-1e20; zz[1]=1e20;
+  for(let q=1;q<n;q++){
+    let s=((f[q]+q*q)-(f[v[k]]+v[k]*v[k]))/(2*q-2*v[k]);
+    while(s<=zz[k]){ k--; s=((f[q]+q*q)-(f[v[k]]+v[k]*v[k]))/(2*q-2*v[k]); }
+    k++; v[k]=q; zz[k]=s; zz[k+1]=1e20;
+  }
+  k=0;
+  for(let q=0;q<n;q++){
+    while(zz[k+1]<q) k++;
+    const dq=q-v[k]; d[q]=dq*dq+f[v[k]];
+  }
+}
+// Transposition par blocs 32×32. La passe "colonnes" de l'EDT lirait sinon la
+// grille avec un pas de W flottants : un défaut de cache par pixel, mesuré à
+// lui seul comme le premier poste de coût du tranchage. Transposer puis
+// balayer en lignes coûte deux parcours contigus et supprime le problème.
+function slTranspose(src,w,h,dst){
+  const B=32;
+  for(let j0=0;j0<h;j0+=B) for(let i0=0;i0<w;i0+=B){
+    const jm=Math.min(j0+B,h), im=Math.min(i0+B,w);
+    for(let j=j0;j<jm;j++){ const s=j*w;
+      for(let i=i0;i<im;i++) dst[i*h+j]=src[s+i];
+    }
+  }
+}
+// EDT² de `seed` (0 = germe, SL_BIG = reste) → dst, en pixels².
+function slEdt(seed,W,H,dst,C){
+  for(let j=0;j<H;j++){
+    const b=j*W;
+    for(let i=0;i<W;i++) C.f[i]=seed[b+i];
+    slDt1(C.f,C.d,C.v,C.z,W);
+    for(let i=0;i<W;i++) dst[b+i]=C.d[i];
+  }
+  slTranspose(dst,W,H,C.t);
+  for(let i=0;i<W;i++){
+    const b=i*H;
+    for(let j=0;j<H;j++) C.f[j]=C.t[b+j];
+    slDt1(C.f,C.d,C.v,C.z,H);
+    for(let j=0;j<H;j++) C.t[b+j]=C.d[j];
+  }
+  slTranspose(C.t,H,W,dst);
+}
+
+// Champ signé F (en pixels) : +profondeur sous la peau à l'intérieur,
+// -distance à la matière à l'extérieur. Le zéro tombe pile sur la frontière
+// réelle (deux pixels voisins valent +0,5 et -0,5), donc les iso-contours de
+// niveau (k+0,5)·largeur sont exactement les axes des périmètres.
+function slField(mask,W,H,F,C,withOutside){
+  const WH=W*H;
+  for(let i=0;i<WH;i++) C.seed[i]=mask[i]?SL_BIG:0;
+  slEdt(C.seed,W,H,C.e1,C);
+  if(withOutside){
+    for(let i=0;i<WH;i++) C.seed[i]=mask[i]?0:SL_BIG;
+    slEdt(C.seed,W,H,C.e2,C);
+    for(let i=0;i<WH;i++) F[i]=mask[i]?Math.sqrt(C.e1[i])-0.5:-(Math.sqrt(C.e2[i])-0.5);
+  } else {
+    for(let i=0;i<WH;i++) F[i]=mask[i]?Math.sqrt(C.e1[i])-0.5:-1;
+  }
+}
+
+// Marching squares interpolé, orienté matière-à-gauche. Chaque arête de cellule
+// ne porte qu'un point : la table donne une permutation arête→arête, dont le
+// parcours produit directement des boucles fermées (pas de recollage flou).
+function slContours(F,W,H,T){
+  const next=new Map(), pt=new Map();
+  const getH=(i,j)=>{ const id=2*(j*W+i);
+    if(!pt.has(id)){ const a=F[j*W+i], b=F[j*W+i+1]; let t=(T-a)/(b-a);
+      if(!isFinite(t))t=0.5; if(t<0)t=0; if(t>1)t=1; pt.set(id,[i+t,j]); } return id; };
+  const getV=(i,j)=>{ const id=2*(j*W+i)+1;
+    if(!pt.has(id)){ const a=F[j*W+i], b=F[(j+1)*W+i]; let t=(T-a)/(b-a);
+      if(!isFinite(t))t=0.5; if(t<0)t=0; if(t>1)t=1; pt.set(id,[i,j+t]); } return id; };
+  // Balayage à 2 lectures par cellule : les valeurs de la colonne courante
+  // deviennent celles de gauche à l'itération suivante (idem pour leurs bits).
+  for(let j=0;j<H-1;j++){
+    const r0=j*W, r1=r0+W;
+    let v00=F[r0], v01=F[r1], b0=v00>=T?1:0, b3=v01>=T?8:0;
+    for(let i=0;i<W-1;i++){
+    const v10=F[r0+i+1], v11=F[r1+i+1];
+    const b1=v10>=T?2:0, b2=v11>=T?4:0;
+    const c=b0|b1|b2|b3;
+    const pv00=v00, pv01=v01;
+    v00=v10; v01=v11; b0=b1>>1; b3=b2<<1;
+    if(c===0||c===15) continue;
+    const A=()=>getH(i,j), B=()=>getV(i+1,j), C2=()=>getH(i,j+1), D=()=>getV(i,j);
+    const mid=(pv00+v10+v11+pv01)/4;
+    switch(c){
+      case 1:  next.set(A(),D()); break;
+      case 2:  next.set(B(),A()); break;
+      case 3:  next.set(B(),D()); break;
+      case 4:  next.set(C2(),B()); break;
+      case 6:  next.set(C2(),A()); break;
+      case 7:  next.set(C2(),D()); break;
+      case 8:  next.set(D(),C2()); break;
+      case 9:  next.set(A(),C2()); break;
+      case 11: next.set(B(),C2()); break;
+      case 12: next.set(D(),B()); break;
+      case 13: next.set(A(),B()); break;
+      case 14: next.set(D(),A()); break;
+      case 5:  if(mid>=T){ next.set(A(),B()); next.set(C2(),D()); }
+               else { next.set(A(),D()); next.set(C2(),B()); } break;   // selle : le centre tranche
+      case 10: if(mid>=T){ next.set(D(),A()); next.set(B(),C2()); }
+               else { next.set(B(),A()); next.set(D(),C2()); } break;
+    }
+  }}
+  const seen=new Set(), loops=[];
+  for(const start of next.keys()){
+    if(seen.has(start)) continue;
+    const loop=[]; let e=start, guard=0;
+    while(e!==undefined && !seen.has(e) && guard++<2e6){
+      seen.add(e); const p=pt.get(e); loop.push(p[0],p[1]); e=next.get(e);
+    }
+    if(loop.length>=8) loops.push(loop);
+  }
+  return loops;
+}
+
+// Douglas-Peucker sur boucle fermée (le premier point est répété en fin de
+// chaîne pour que la simplification ne coupe pas la fermeture).
+function slSimplify(p,tol){
+  const n=p.length/2; if(n<4) return p;
+  const keep=new Uint8Array(n); keep[0]=1; keep[n-1]=1;
+  const st=[[0,n-1]], t2=tol*tol;
+  while(st.length){
+    const [a,b]=st.pop(); if(b<=a+1) continue;
+    const ax=p[a*2],ay=p[a*2+1], dx=p[b*2]-ax, dy=p[b*2+1]-ay, L2=dx*dx+dy*dy;
+    let best=-1,bd=t2;
+    for(let i=a+1;i<b;i++){
+      const qx=p[i*2]-ax, qy=p[i*2+1]-ay; let d2;
+      if(L2>0){ let t=(qx*dx+qy*dy)/L2; if(t<0)t=0; else if(t>1)t=1;
+        const ex=qx-t*dx, ey=qy-t*dy; d2=ex*ex+ey*ey; }
+      else d2=qx*qx+qy*qy;
+      if(d2>bd){ bd=d2; best=i; }
+    }
+    if(best>=0){ keep[best]=1; st.push([a,best],[best,b]); }
+  }
+  const out=[]; for(let i=0;i<n;i++) if(keep[i]) out.push(p[i*2],p[i*2+1]);
+  return out;
+}
+
+// Lignes de remplissage clippées sur un masque : on marche le long de chaque
+// ligne (repère tourné) et on garde les tronçons dans la matière. Zigzag :
+// une ligne sur deux est parcourue à l'envers, ce qui divise les déplacements.
+function slInfillLines(mask,R,angDeg,spacing,minLen){
+  const {W,H,x0,y0,px}=R, a=angDeg*Math.PI/180, ca=Math.cos(a), sa=Math.sin(a);
+  let u0=1e9,u1=-1e9,w0=1e9,w1=-1e9;
+  for(const X of [x0,x0+W*px]) for(const Y of [y0,y0+H*px]){
+    const u=X*ca+Y*sa, w=-X*sa+Y*ca;
+    if(u<u0)u0=u; if(u>u1)u1=u; if(w<w0)w0=w; if(w>w1)w1=w;
+  }
+  const step=px*0.6, res=[];
+  let li=0;
+  for(let w=Math.ceil(w0/spacing)*spacing; w<=w1; w+=spacing, li++){
+    const runs=[]; let run=null;
+    for(let u=u0;u<=u1;u+=step){
+      const X=u*ca-w*sa, Y=u*sa+w*ca;
+      const i=Math.floor((X-x0)/px), j=Math.floor((Y-y0)/px);
+      const inside = i>=0&&j>=0&&i<W&&j<H&&mask[j*W+i];
+      if(inside){ if(run){ run[2]=X; run[3]=Y; } else run=[X,Y,X,Y]; }
+      else if(run){ runs.push(run); run=null; }
+    }
+    if(run) runs.push(run);
+    const keep=runs.filter(r=>Math.hypot(r[2]-r[0],r[3]-r[1])>=minLen);
+    if(li&1){ keep.reverse(); for(const r of keep){ const x=r[0],y=r[1]; r[0]=r[2]; r[1]=r[3]; r[2]=x; r[3]=y; } }
+    for(const r of keep) res.push(r);
+  }
+  return res;
+}
+
+// ── Écriture du G-code ──────────────────────────────────────────────────────
+function slWriter(cfg){
+  const out=[]; const w={out, e:0, x:null, y:null, f:-1, retracted:false, time:0, dist:0};
+  const F=v=>Math.round(v*60);                       // mm/s → mm/min
+  w.raw=s=>out.push(s);
+  w.moveZ=(z,speed)=>{ out.push(`G1 Z${z.toFixed(3)} F${F(speed)}`); w.f=F(speed); };
+  w.retract=()=>{ if(w.retracted||cfg.retract<=0) return;
+    w.e-=cfg.retract; out.push(`G1 E${w.e.toFixed(5)} F${F(cfg.retractV)}`); w.f=F(cfg.retractV); w.retracted=true;
+    w.time+=cfg.retract/cfg.retractV; };
+  w.unretract=()=>{ if(!w.retracted) return;
+    w.e+=cfg.retract; out.push(`G1 E${w.e.toFixed(5)} F${F(cfg.retractV)}`); w.f=F(cfg.retractV); w.retracted=false;
+    w.time+=cfg.retract/cfg.retractV; };
+  w.travel=(x,y)=>{
+    // Première mise en position : la buse sort du start G-code, sa position
+    // n'est pas connue ici — le mouvement est émis mais ne compte ni pour la
+    // rétraction ni pour le temps (sinon une distance sentinelle empoisonne
+    // l'estimation entière).
+    const first=(w.x==null);
+    const d=first?0:Math.hypot(x-w.x,y-w.y);
+    if(!first&&d<1e-4) return;
+    if(!first&&d>1.5) w.retract();
+    const f=F(cfg.vTrav);
+    out.push(`G0 X${x.toFixed(3)} Y${y.toFixed(3)}${f!==w.f?` F${f}`:''}`);
+    w.f=f; w.x=x; w.y=y; w.time+=d/cfg.vTrav;
+  };
+  w.extrude=(x,y,speed,eF)=>{
+    const d=Math.hypot(x-w.x,y-w.y); if(d<1e-4) return;
+    w.unretract();
+    w.e+=d*eF; w.dist+=d;
+    const f=F(speed);
+    out.push(`G1 X${x.toFixed(3)} Y${y.toFixed(3)} E${w.e.toFixed(5)}${f!==w.f?` F${f}`:''}`);
+    w.f=f; w.x=x; w.y=y; w.time+=d/speed;
+  };
+  // Boucle fermée : on démarre au point le plus proche de la buse (moins de
+  // déplacement, et la couture ne se promène pas d'une couche à l'autre).
+  w.loop=(pts,speed,eF)=>{
+    const n=pts.length/2; if(n<3) return;
+    let s=0;
+    if(w.x!=null){ let bd=1e18;
+      for(let i=0;i<n;i++){ const dx=pts[i*2]-w.x, dy=pts[i*2+1]-w.y, d=dx*dx+dy*dy; if(d<bd){bd=d;s=i;} } }
+    w.travel(pts[s*2],pts[s*2+1]);
+    for(let k=1;k<=n;k++){ const i=(s+k)%n; w.extrude(pts[i*2],pts[i*2+1],speed,eF); }
+  };
+  return w;
+}
+
+function slScripts(preset,cfg){
+  const prime=(70*0.6*cfg.firstH/FIL_A).toFixed(5);
+  const marlinStart=[
+    '; --- start G-code (Marlin générique) ---',
+    'G28 ; homing des 3 axes',
+    `M140 S${cfg.bedC} ; chauffe le plateau`,
+    `M104 S${cfg.nozC} ; chauffe la buse`,
+    `M190 S${cfg.bedC} ; attend le plateau`,
+    `M109 S${cfg.nozC} ; attend la buse`,
+    'G90 ; coordonnees absolues',
+    'M82 ; extrusion absolue',
+    'G92 E0',
+    'G1 Z2.0 F1200 ; degage en Z',
+    'G1 X5 Y5 F3000',
+    `G1 Z${cfg.firstH.toFixed(3)} F600`,
+    `G1 X75 Y5 E${prime} F1000 ; ligne d'amorce`,
+    'G92 E0 ; remise a zero de l\'extrudeur',
+  ].join('\n');
+  const marlinEnd=[
+    '; --- end G-code ---',
+    'M104 S0 ; coupe la buse',
+    'M140 S0 ; coupe le plateau',
+    'M107 ; coupe la ventilation',
+    'G91',
+    'G1 E-3 F1800 ; retracte',
+    'G1 Z10 F600 ; degage en Z',
+    'G90',
+    `G1 X5 Y${Math.max(0,cfg.bed[1]-10)} F3000 ; sort la piece`,
+    'M84 ; moteurs hors tension',
+  ].join('\n');
+  if(preset==='klipper') return {
+    start:['; --- start G-code (Klipper) ---',
+      '; START_PRINT doit exister dans ton printer.cfg (homing + chauffe + amorce).',
+      '; Le controle prevol ne voit PAS l\'interieur des macros : il signalera',
+      '; l\'absence de G28/M109, c\'est normal avec ce modele.',
+      `START_PRINT EXTRUDER_TEMP=${cfg.nozC} BED_TEMP=${cfg.bedC}`,
+      'G90','M82','G92 E0'].join('\n'),
+    end:['; --- end G-code (Klipper) ---','END_PRINT','M104 S0','M140 S0','M107','M84'].join('\n')};
+  if(preset==='bambu') return {
+    start:['; --- start G-code (Bambu Lab) ---',
+      '; COLLE ICI le start G-code de Bambu Studio pour ta machine.',
+      '; Sans lui : pas de homing, pas de calibration de plateau, pas de purge.',
+      `; Consignes visees : buse ${cfg.nozC} °C · plateau ${cfg.bedC} °C`,
+      'G90','M82','G92 E0'].join('\n'),
+    end:['; --- end G-code (Bambu Lab) ---','; COLLE ICI le end G-code de Bambu Studio.',
+      'M104 S0','M140 S0','M107','M84'].join('\n')};
+  return {start:marlinStart,end:marlinEnd};
+}
+
+// ── Boucle principale de tranchage ──────────────────────────────────────────
+async function slSlice(tris,cfg,onProgress){
+  const P=slPrepare(tris,cfg.bed);
+  const height=P.size[2];
+  const nLayers=Math.max(1,Math.floor((height-cfg.firstH)/cfg.layerH)+1);
+  if(nLayers>SL_MAXLAYERS) throw new Error(`${nLayers} couches — au-delà du plafond de ${SL_MAXLAYERS}. Augmente la hauteur de couche.`);
+  const lw=cfg.lineW;
+  // pas de raster : au moins 3 échantillons par largeur de ligne, borné par la mémoire
+  const margin=cfg.skirtLoops>0 ? cfg.skirtGap+cfg.skirtLoops*lw+2*lw : 2*lw;
+  // 3 pixels par largeur de ligne : les contours étant interpolés (sous-pixel),
+  // l'erreur de trajectoire reste ~px/4 ≈ 0,04 mm, pour 44 % de pixels en moins
+  // qu'à lw/4 — sur toutes les phases à la fois.
+  let px=Math.min(lw/3,0.15);
+  const spanX=P.box.x1-P.box.x0+2*margin, spanY=P.box.y1-P.box.y0+2*margin;
+  while((Math.ceil(spanX/px)+2)*(Math.ceil(spanY/px)+2)>SL_MAXPIX) px*=1.25;
+  const W=Math.ceil(spanX/px)+2, H=Math.ceil(spanY/px)+2, WH=W*H;
+  const R={W,H,px,x0:P.box.x0-margin-px,y0:P.box.y0-margin-px,
+           cnt:new Int32Array(H),off:new Int32Array(H),cx:new Float64Array(1024),cd:new Int8Array(1024)};
+  const mx=Math.max(W,H);
+  // e1/e2 en Float32 : les distances utiles (< 2^24 px²) y sont exactes, et ça
+  // divise par deux la mémoire du plus gros tampon.
+  const C={f:new Float64Array(mx),d:new Float64Array(mx),v:new Int32Array(mx),z:new Float64Array(mx+1),
+           seed:new Float32Array(WH),e1:new Float32Array(WH),e2:new Float32Array(WH),t:new Float32Array(WH)};
+  const F=new Float32Array(WH), infM=new Uint8Array(WH), solM=new Uint8Array(WH), sprM=new Uint8Array(WH), sub=new Uint8Array(WH);
+
+  const N=cfg.topBottom, RING=2*N+1;
+  const ring=[], ringBB=[];
+  for(let r=0;r<RING;r++){ ring.push(new Uint8Array(WH)); ringBB.push(new Int32Array(4)); }
+  const ringOf=new Int32Array(RING).fill(-1);
+  const slot=i=>((i%RING)+RING)%RING;
+  const zSlice=i=>(i===0?cfg.firstH/2:cfg.firstH+(i-0.5)*cfg.layerH);
+  const zPrint=i=>(i===0?cfg.firstH:cfg.firstH+i*cfg.layerH);
+  // Balayage monotone : la liste active ne contient que les triangles qui
+  // coupent le plan courant, d'où un coût quasi linéaire en nombre de couches.
+  let ptr=0, active=[];
+  const seg=new Float64Array(4); let segs=[];
+  const rasterize=(i,mask,bb)=>{
+    const z=zSlice(i);
+    while(ptr<P.n && P.zlo[P.ord[ptr]]<=z) active.push(P.ord[ptr++]);
+    if(active.length) active=active.filter(t=>P.zhi[t]>=z);
+    segs.length=0;
+    for(const t of active) if(slTriSeg(P,t,z,seg)) segs.push(seg[0],seg[1],seg[2],seg[3]);
+    slFill(segs,R,mask,bb);
+  };
+  const ensure=i=>{ if(i<0||i>=nLayers) return null;
+    const r=slot(i);
+    if(ringOf[r]!==i){ rasterize(i,ring[r],ringBB[r]); ringOf[r]=i; }
+    return ring[r]; };
+
+  const w=slWriter(cfg);
+  const sc=slScripts(cfg.preset,cfg);
+  const startScript=cfg.startScript!=null?cfg.startScript:sc.start;
+  const endScript=cfg.endScript!=null?cfg.endScript:sc.end;
+  const head=[];
+  w.raw(startScript);
+  const tolMm=Math.max(0.012,R.px*0.4);
+  let emptyLayers=0;
+
+  for(let i=0;i<=N&&i<nLayers;i++) ensure(i);          // amorce du tampon glissant
+
+  // Profil de coût par phase — renvoyé avec le résultat (accessible via
+  // PrintChecker), c'est ce qui a permis d'isoler les vrais goulots plutôt
+  // que d'optimiser au jugé.
+  const PROF={raster:0,field:0,contour:0,solid:0,infill:0};
+  let _t=performance.now(), lastYield=_t;
+  const _lap=k=>{ const n=performance.now(); PROF[k]+=n-_t; _t=n; };
+
+  for(let i=0;i<nLayers;i++){
+    ensure(i+N);
+    const mask=ensure(i);
+    _lap('raster');
+    const z=zPrint(i), h=(i===0?cfg.firstH:cfg.layerH), eF=lw*h/FIL_A;
+    const vPer=i===0?cfg.vFirst:cfg.vPer, vFil=i===0?cfg.vFirst:cfg.vFill;
+    w.raw(`;LAYER:${i}`); w.raw(`;Z:${z.toFixed(3)}`);
+    w.moveZ(z,cfg.vTrav/2);
+    if(i+1===cfg.fanLayer||(i===0&&cfg.fanLayer<=1))
+      w.raw(cfg.fan>0?`M106 S${Math.round(cfg.fan*2.55)} ; ventilation ${cfg.fan} %`:'M107 ; ventilation coupee');
+    // ROI : tout le travail de la couche (EDT, contours, remplissage) se fait sur
+    // l'emprise réelle de la matière, pas sur la grille de la pièce entière —
+    // une couche haute d'une pièce élancée occupe souvent 5 % de la grille.
+    const bb=ringBB[slot(i)];
+    if(bb[1]<0){ emptyLayers++; continue; }                       // couche vide
+    const pad=(i===0&&cfg.skirtLoops>0)?Math.ceil((cfg.skirtGap+cfg.skirtLoops*lw+lw)/px)+2:2;
+    const i0=Math.max(0,bb[0]-pad), i1=Math.min(W-1,bb[1]+pad);
+    const j0=Math.max(0,bb[2]-pad), j1=Math.min(H-1,bb[3]+pad);
+    const rw=i1-i0+1, rh=j1-j0+1;
+    for(let j=0;j<rh;j++) sub.set(mask.subarray((j0+j)*W+i0,(j0+j)*W+i1+1), j*rw);
+    const RS={W:rw,H:rh,px,x0:R.x0+i0*px,y0:R.y0+j0*px};
+    const SX=ix=>RS.x0+(ix+0.5)*px, SY=iy=>RS.y0+(iy+0.5)*px;
+    const toMm=loop=>{ const o=new Array(loop.length);
+      for(let k=0;k<loop.length;k+=2){ o[k]=SX(loop[k]); o[k+1]=SY(loop[k+1]); } return o; };
+    const emit=(loops,type)=>{
+      if(!loops.length) return;
+      if(type) w.raw(type);
+      for(const L of loops){
+        const mm=slSimplify(toMm(L).concat([SX(L[0]),SY(L[1])]),tolMm);
+        if(mm.length>=8) w.loop(mm.slice(0,mm.length-2),vPer,eF);
+      }
+    };
+    slField(sub,rw,rh,F,C,i===0&&cfg.skirtLoops>0);
+    _lap('field');
+
+    // jupe (première couche) — iso-contours négatifs du champ signé
+    if(i===0&&cfg.skirtLoops>0){
+      w.raw(';TYPE:SKIRT');
+      for(let s=cfg.skirtLoops;s>=1;s--)
+        emit(slContours(F,rw,rh,-(cfg.skirtGap+(s-0.5)*lw)/px),null);
+    }
+    // périmètres : intérieurs d'abord, extérieur en dernier (meilleur état de surface)
+    for(let k=cfg.perims-1;k>=0;k--)
+      emit(slContours(F,rw,rh,(k+0.5)*lw/px), k===0?';TYPE:WALL-OUTER':';TYPE:WALL-INNER');
+    _lap('contour');
+    // zone de remplissage = intérieur du dernier périmètre, moins 15 % de recouvrement
+    const Ti=(cfg.perims+0.35)*lw/px, RWH=rw*rh;
+    let nInf=0;
+    for(let k=0;k<RWH;k++){ const v=F[k]>=Ti?1:0; infM[k]=v; nInf+=v; }
+    if(nInf){
+      // plein = ce qui n'est pas couvert par les N couches au-dessus (ou en dessous)
+      const up=[],dn=[];
+      for(let k=1;k<=N;k++){ up.push(ensure(i+k)); dn.push(ensure(i-k)); }
+      // Boucles indexées volontairement : un `for…of` ici alloue un itérateur
+      // par pixel et par voisine, soit des centaines de milliers d'objets par
+      // couche — mesuré comme le premier poste de cette phase.
+      const nu=up.length, nd=dn.length;
+      for(let j=0;j<rh;j++){
+        const rb=j*rw, fb=(j0+j)*W+i0;
+        for(let ii=0;ii<rw;ii++){
+          const k=rb+ii;
+          if(!infM[k]){ solM[k]=0; sprM[k]=0; continue; }
+          const fk=fb+ii;
+          let open=false;
+          for(let q=0;q<nu;q++){ const m=up[q]; if(!m||!m[fk]){ open=true; break; } }
+          if(!open) for(let q=0;q<nd;q++){ const m=dn[q]; if(!m||!m[fk]){ open=true; break; } }
+          const s=open?1:0; solM[k]=s; sprM[k]=s?0:1;
+        }
+      }
+      _lap('solid');
+      const ang=(i&1)?135:45;
+      const solid=slInfillLines(solM,RS,ang,lw,lw*0.8);
+      if(solid.length){ w.raw(';TYPE:SKIN');
+        for(const r of solid){ w.travel(r[0],r[1]); w.extrude(r[2],r[3],vFil,eF); } }
+      if(cfg.infill>0){
+        const sp=lw*100/cfg.infill;
+        const sparse=cfg.infill>=100?slInfillLines(sprM,RS,ang,lw,lw*0.8)
+                                    :slInfillLines(sprM,RS,ang,sp,lw*1.5);
+        if(sparse.length){ w.raw(';TYPE:FILL');
+          for(const r of sparse){ w.travel(r[0],r[1]); w.extrude(r[2],r[3],vFil,eF); } }
+      }
+    }
+    _lap('infill');
+    // Respiration pilotée par le temps écoulé, pas par le compteur de couches :
+    // une couche coûte de 2 ms (petite section) à 100 ms (grande), un pas fixe
+    // rendrait la main soit trop souvent soit trop rarement.
+    if(performance.now()-lastYield>100){
+      onProgress&&onProgress((i+1)/nLayers);
+      await slYield();
+      lastYield=performance.now(); _t=lastYield;
+    }
+  }
+  w.retract();
+  w.raw(endScript);
+  const timeS=Math.round(w.time*1.08);               // marge d'accélération/décélération
+  const filM=w.e/1000, mat=MATERIALS[cfg.materialKey]||MATERIALS.PLA;
+  const weightG=w.e*FIL_A/1000*mat.density;
+  head.push(
+    '; generated by PrintChecker-Slicer v1 — tranchage raster, 100 % navigateur',
+    `; date            : ${new Date().toISOString()}`,
+    `; modele          : ${cfg.name}`,
+    `; machine         : ${cfg.printerName} · plateau ${cfg.bed.join('×')} mm`,
+    `; matiere         : ${mat.label} · buse ${cfg.nozC} °C · plateau ${cfg.bedC} °C`,
+    `; couche          : ${cfg.layerH} mm (1re ${cfg.firstH} mm) · buse ${cfg.nozzle} mm · ligne ${lw.toFixed(3)} mm`,
+    `; perimetres      : ${cfg.perims} · pleines dessus/dessous ${cfg.topBottom} · remplissage ${cfg.infill} %`,
+    `; raster          : ${px.toFixed(4)} mm/pixel · grille ${W}×${H}`,
+    '; LIMITES         : pas de supports, pas de ponts, pas de parois < diametre de buse,',
+    ';                   pas de lissage, pas de hauteur de couche variable.',
+    ';                   Verifie le resultat au controle prevol avant de lancer.',
+    `;LAYER_COUNT:${nLayers}`,
+    `;TIME:${timeS}`,
+    `;Filament used: ${filM.toFixed(3)}m`);
+  return {gcode:head.join('\n')+'\n'+w.out.join('\n')+'\n',
+          nLayers, timeS, filM, weightG, emptyLayers, px, grid:[W,H],
+          costEur:weightG/1000*mat.priceKg, height, dist:w.dist, prof:PROF};
+}
+
+// ── UI de la trancheuse ─────────────────────────────────────────────────────
+let SLGCODE=null, SLNAME='piece', slDirty={start:false,end:false};
+const slNum=(id,dflt)=>{ const v=parseFloat($(id).value); return isFinite(v)?v:dflt; };
+function slCfg(){
+  const pr=PRINTERS[$('printer').value]||PRINTERS.bambu_a1;
+  const nozzle=+$('sl-noz').value, lineW=nozzle*1.125;
+  return {
+    bed:pr.bed, printerName:pr.name, materialKey:$('material').value, name:curFileName,
+    layerH:+$('sl-lh').value, firstH:+$('sl-flh').value, nozzle, lineW,
+    perims:Math.max(1,Math.round(+$('wall').value/lineW)),
+    topBottom:+$('sl-tb').value, infill:+$('infill').value,
+    vPer:slNum('sl-vper',40), vFill:slNum('sl-vfill',60), vFirst:slNum('sl-vfirst',20), vTrav:slNum('sl-vtrav',120),
+    retract:slNum('sl-ret',1.5), retractV:slNum('sl-retv',35),
+    skirtLoops:Math.round(slNum('sl-skirt',2)), skirtGap:slNum('sl-skirtgap',3),
+    nozC:Math.round(slNum('sl-tn',210)), bedC:Math.round(slNum('sl-tb2',60)),
+    fan:Math.round(slNum('sl-fan',100)), fanLayer:Math.max(1,Math.round(slNum('sl-fanl',2))),
+    preset:$('sl-preset').value,
+  };
+}
+function slFillScripts(){
+  const c=slCfg(), s=slScripts(c.preset,c);
+  if(!slDirty.start) $('sl-start').value=s.start;
+  if(!slDirty.end)   $('sl-end').value=s.end;
+}
+function slSync(){
+  $('sl-lhv').textContent=(+$('sl-lh').value).toFixed(2)+' mm';
+  $('sl-flhv').textContent=(+$('sl-flh').value).toFixed(2)+' mm';
+  $('sl-tbv').textContent=$('sl-tb').value;
+  const c=slCfg(), pr=PRINTERS[$('printer').value]||PRINTERS.bambu_a1, mat=MATERIALS[$('material').value]||MATERIALS.PLA;
+  const go=$('sl-go'); let block=null;
+  if(!pr.fdm) block=`<b>${pr.name}</b> est une machine résine : elle ne se pilote pas en G-code mais en fichiers de couches propriétaires. Choisis une imprimante FDM en carte 1 pour trancher.`;
+  else if(mat.castable) block=`<b>${mat.label}</b> est un matériau de coulée (SLA/DLP) — sans rapport avec le dépôt de filament. Choisis un filament en carte 1.`;
+  else if(!SCALED) block='Charge un modèle en carte 1 pour pouvoir trancher.';
+  // Pièce hors volume : refuser AVANT de trancher. Sans ce garde-fou, une pièce
+  // trop haute part quand même pour plusieurs minutes et produit des dizaines de
+  // Mo de G-code inimprimable — le contrôle prévol ne le dirait qu'après coup.
+  else if(G&&!estimate(G,$('printer').value,$('material').value,+$('infill').value,+$('wall').value).fits)
+    block=`La pièce (${G.size.map(x=>Math.round(x)).join('×')} mm) dépasse le volume de <b>${pr.name}</b> (${pr.bed.join('×')} mm) : rien ne sert de la trancher. Réduis l'échelle, réoriente, découpe, ou change d'imprimante en carte 1.`;
+  go.disabled=!!block;
+  go.classList.toggle('export',!!block);
+  const nL=G?Math.max(1,Math.floor((G.size[2]-c.firstH)/c.layerH)+1):0;
+  $('sl-derived').innerHTML = block ? `⚠️ ${block}` :
+    `Largeur de ligne <b>${c.lineW.toFixed(2)} mm</b> (buse ${c.nozzle} mm × 1,125) · `+
+    `<b>${c.perims} périmètre${c.perims>1?'s':''}</b> déduits de l'épaisseur de paroi ${(+$('wall').value).toFixed(1)} mm de la carte 1 · `+
+    `remplissage <b>${c.infill} %</b> (curseur carte 1)<br>`+
+    `<span style="color:var(--dim2)">≈ ${nL} couches pour ${G?G.size[2].toFixed(1):'—'} mm de haut · pièce centrée sur le plateau ${c.bed[0]}×${c.bed[1]} mm</span>`+
+    (G&&G.maxOverhangDeg>OVERHANG_LIMIT?`<br><span style="color:var(--amber)">⚠️ ${g_overhangNote(G)}</span>`:'');
+  slFillScripts();
+}
+const g_overhangNote=g=>`Surplombs à ${g.maxOverhangDeg}° détectés : la trancheuse ne génère pas de supports, ces zones s'imprimeront dans le vide.`;
+['sl-lh','sl-flh','sl-noz','sl-tb','sl-tn','sl-tb2','sl-fan','sl-fanl','sl-preset','sl-vper','sl-vfill','sl-vfirst','sl-vtrav','sl-ret','sl-retv','sl-skirt','sl-skirtgap']
+  .forEach(id=>$(id).addEventListener('input',slSync));
+$('sl-start').addEventListener('input',()=>slDirty.start=true);
+$('sl-end').addEventListener('input',()=>slDirty.end=true);
+// Le matériau pilote les consignes proposées tant que l'utilisateur n'y a pas touché.
+let slTempDirty=false;
+$('sl-tn').addEventListener('input',()=>slTempDirty=true);
+$('sl-tb2').addEventListener('input',()=>slTempDirty=true);
+$('material').addEventListener('input',()=>{
+  const m=MATERIALS[$('material').value];
+  if(m&&m.nozzleC&&!slTempDirty){ $('sl-tn').value=m.nozzleC; $('sl-tb2').value=m.bedC; $('sl-fan').value=m.fan; slFillScripts(); }
+  slSync();
+});
+$('sl-go').onclick=async()=>{
+  if(!SCALED) return;
+  const c=slCfg(), bar=$('sl-bar'), res=$('sl-res'), go=$('sl-go');
+  c.startScript=$('sl-start').value; c.endScript=$('sl-end').value;
+  go.disabled=true; bar.style.display='block'; bar.firstElementChild.style.width='0%';
+  res.innerHTML='Tranchage en cours…';
+  const t0=performance.now();
+  try{
+    const r=await slSlice(SCALED,c,p=>{ bar.firstElementChild.style.width=(p*100).toFixed(0)+'%'; });
+    const gc=r.gcode;
+    SLGCODE=gc; SLNAME=(curFileName||'piece').replace(/[^\w\-]+/g,'_');
+    bar.firstElementChild.style.width='100%';
+    const est=estimate(G,$('printer').value,$('material').value,+$('infill').value,+$('wall').value);
+    const dt=((performance.now()-t0)/1000).toFixed(1);
+    res.innerHTML=
+      `<b>${r.nLayers} couches</b> tranchées en ${dt} s · raster ${r.px.toFixed(3)} mm/px (${r.grid[0]}×${r.grid[1]})<br>`+
+      `Temps estimé <b>${gFmtTime(r.timeS)}</b> · filament <b>${r.filM.toFixed(2)} m</b> ≈ <b>${r.weightG.toFixed(0)} g</b> · matière <b>${r.costEur.toFixed(2)} €</b><br>`+
+      `<span style="color:var(--dim2)">Estimation rapide de la carte 2 : ${est.weightG} g · ${est.timeH} h · ${est.costEur.toFixed(2)} € — l'écart mesure ce que le modèle coque+remplissage ne voyait pas.</span>`+
+      (r.emptyLayers?`<br><span style="color:var(--amber)">⚠️ ${r.emptyLayers} couche(s) vide(s) — maillage ouvert ou détail sous le pas de raster.</span>`:'')+
+      `<br><span style="color:var(--dim2)">→ chargé dans la boîte à outils ci-dessous : contrôle prévol, aperçu 3D et passeport s'appliquent maintenant à ce fichier.</span>`;
+    const dl=$('sl-dl'); dl.disabled=false; dl.classList.remove('export');
+    gLoadText(gc, SLNAME+'.gcode');
+    setGView('3d');
+    document.querySelector('.sechead .g').scrollIntoView({behavior:'smooth',block:'start'});
+  }catch(err){
+    console.error(err);
+    res.innerHTML=`<span style="color:var(--red)">Échec du tranchage : ${err&&err.message?err.message:err}</span>`;
+  }finally{
+    go.disabled=false; setTimeout(()=>{bar.style.display='none';},900);
+  }
+};
+$('sl-dl').onclick=()=>{
+  if(!SLGCODE) return;
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([SLGCODE],{type:'text/x-gcode'}));
+  a.download=SLNAME+'.gcode';
+  a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),5000);
+};
+
 // ══ PLANCHE PHOTOGRAMMÉTRIE (A4, unités SVG = mm) ═══════════════════════════
 // Pastilles d'identification (1-4 points), barres de contrôle 100,0 mm,
 // cadre carte bancaire 85,60 × 53,98 mm pour vérifier l'échelle d'impression,
@@ -1545,11 +2333,14 @@ addEventListener('afterprint',()=>document.body.classList.remove('print-mat'));
 
 // petite API de debug/power-users (console) — volontairement exposée
 window.PrintChecker={gParse,gPauseBlock,gApply,gEdits,gSafety,
-  get _3d(){ return {data:G3D, viewer:g3r}; }};
+  slice:(o={})=>slSlice(SCALED,{...slCfg(),...o}), slCfg,
+  get _3d(){ return {data:G3D, viewer:g3r}; },
+  get _gcode(){ return SLGCODE; }};
 
 // init
 sizeView(); frame();
 run(demoTris());          // charge la démo au démarrage
 gDraw(1);                 // placeholder de l'aperçu G-code
+slSync();                 // réglages dérivés + scripts start/end de la trancheuse
 </script>
 </body></html>
