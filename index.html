@@ -2,6 +2,20 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>3D Print Checker — contrôle prévol : analyse 3D, sécurité G-code, pause — gratuit</title>
 <meta name="description" content="Le contrôle prévol gratuit de tes impressions 3D : score de santé du maillage /100 (trous, non-manifold, normales), analyse du modèle (volume, poids, coût, surplombs), aperçu 3D des trajectoires G-code, contrôle de sécurité (hors plateau, extrusion à froid, débit volumique, refroidissement, chauffages, firmware), pause ou changement de filament (M600) à la couche choisie, passeport d'impression SHA-256. 100 % dans le navigateur, sans compte.">
+<link rel="canonical" href="https://deligny-r-d.github.io/print-checker/">
+<!-- Favicon en SVG intégré : pas de second fichier à servir, donc rien à casser
+     lors d'un déplacement du dépôt (l'ancien domaine github.io est mort d'un
+     renommage d'organisation le 10/08 — voir le portail DELIGNY R&D). -->
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23000'/%3E%3Cpath d='M14 44 L32 14 L50 44 Z' fill='none' stroke='%232997ff' stroke-width='5' stroke-linejoin='round'/%3E%3Cpath d='M14 44 H50' stroke='%2330d158' stroke-width='5' stroke-linecap='round'/%3E%3C/svg%3E">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="DELIGNY R&D">
+<meta property="og:url" content="https://deligny-r-d.github.io/print-checker/">
+<meta property="og:title" content="3D Print Checker — le contrôle prévol de tes impressions 3D">
+<meta property="og:description" content="Santé du maillage /100, carte d'épaisseurs réelles, tranchage local, contrôle de sécurité du G-code et pause à la couche voulue. Gratuit, sans compte, et rien ne quitte ton navigateur.">
+<meta property="og:locale" content="fr_FR">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="3D Print Checker — contrôle prévol des impressions 3D">
+<meta name="twitter:description" content="Épaisseurs, surplombs, tranchage et sécurité G-code — 100 % dans le navigateur, sans compte.">
 <style>
 :root{
   --bg:#000; --bg1:#0a0a0c; --card:#1c1c1e; --card2:#212123;
@@ -103,6 +117,10 @@ input[type=text].gtxt{width:100%;background:#141416;color:var(--txt);border:.5px
 .opline a{color:var(--red);font-size:11px;margin-left:8px;}
 #gverdict{margin-left:10px;vertical-align:middle;font-size:12px;}
 #s-elec{margin-top:10px;font-size:12.5px;color:var(--dim2);}
+
+/* Carte d'épaisseurs */
+.thbox{margin-top:16px;padding-top:14px;border-top:.5px solid var(--sep);}
+#th-canvas{width:100%;height:240px;border-radius:14px;background:radial-gradient(120% 120% at 50% 0%,#141416,#000);display:block;margin-top:12px;}
 
 /* Trancheuse */
 .sechead .g4{background:linear-gradient(90deg,#bf5af2,#2997ff 70%);-webkit-background-clip:text;background-clip:text;color:transparent;}
@@ -210,6 +228,27 @@ footer .disc{max-width:640px;margin:0 auto 10px;}
       <div class="castable-note" id="castable-note" style="display:none"></div>
       <h2 style="margin-top:22px">3 · Fabricabilité</h2>
       <div id="risks"><div class="empty">Charge un modèle pour lancer l'analyse.</div></div>
+
+      <div class="thbox">
+        <div class="row-btn" style="justify-content:flex-start;margin-top:0">
+          <button class="btn" id="th-go">📏 Analyser les épaisseurs</button>
+        </div>
+        <div class="slbar" id="th-bar"><i></i></div>
+        <div class="gplan" id="th-res">Mesure l'épaisseur <b>locale</b> de la matière, partout dans la pièce — une paroi de 0,3 mm au milieu d'un gros volume ne se voit sur aucune cote d'encombrement.</div>
+        <div id="th-view" style="display:none">
+          <canvas id="th-canvas"></canvas>
+          <div class="g3dlegend">
+            <span class="chip"><i style="background:#ff453a"></i>sous le seuil — ne s'imprimera pas</span>
+            <span class="chip"><i style="background:#ff9f0a"></i>1 à 2 × le seuil — fragile</span>
+            <span class="chip"><i style="background:#30d158"></i>au-delà — sain</span>
+          </div>
+          <div class="fld" style="margin-top:8px">
+            <label>Coupe <span class="layer-lbl" id="th-lbl"></span></label>
+            <input type="range" id="th-slider" min="1" max="1" step="1" value="1" disabled>
+          </div>
+        </div>
+      </div>
+
       <div class="export-row">
         <button class="btn export" id="export" disabled>📄 Exporter le rapport (PDF)</button>
       </div>
@@ -711,9 +750,27 @@ function risks(g, est){
       `Au-delà de ${OVERHANG_LIMIT}°, il faut des supports. Réoriente la pièce pour poser les faces plates vers le bas, ou active les supports dans ton slicer.`]);
   else
     R.push(['✅','ok',`Surplombs OK (max ${g.maxOverhangDeg}°)`,`Imprimable sans support dans cette orientation.`]);
-  const minDim=Math.min(s[0],s[1],s[2]);
-  if(minDim<1)
-    R.push(['⚠️','warn',`Détail très fin (${minDim.toFixed(1)} mm)`,`Sous ~1 mm, risque de casse / non-impression. La paroi mini exacte demande un slicing — vérifie l'épaisseur des parois.`]);
+  // Épaisseur : la mesure réelle si elle a été lancée, sinon l'encombrement —
+  // qui ne dit RIEN des parois internes, et le texte doit l'avouer.
+  if(TH){
+    const seuil=TH.seuil, pct=TH.vol>0?TH.critVol/TH.vol*100:0;
+    if(THMIN!=null)
+      R.push(['🚫','warn',`Parois sous ${seuil.toFixed(2)} mm — minimum mesuré ${THMIN.toFixed(2)} mm`,
+        `${pct.toFixed(1)} % de la matière est plus fine qu'un cordon de buse, sur ${TH.critLayers} coupes de la pièce : ces zones ne sortiront pas, ou sortiront en toile d'araignée. Épaissis-les dans le modèle — aucun réglage de tranchage ne les rattrapera.`]);
+    else if(TH.vol>0&&(TH.warnVol-TH.critVol)/TH.vol>0.02)
+      R.push(['⚠️','warn',`Parois fines sur ${((TH.warnVol-TH.critVol)/TH.vol*100).toFixed(1)} % de la pièce`,
+        `Imprimable, mais entre une et deux largeurs de cordon : fragile, et sans remplissage possible dans ces zones. Vise au moins ${(2*seuil).toFixed(1)} mm si la pièce est sollicitée.`]);
+    else
+      R.push(['✅','ok',`Épaisseurs saines (aucune paroi sous ${seuil.toFixed(2)} mm)`,
+        `Mesuré localement partout dans la pièce, pas déduit de l'encombrement.`]);
+    if(TH.zThin&&TH.minZ!=null)
+      R.push(['⚠️','warn',`Plaque horizontale de ${TH.minZ.toFixed(2)} mm (± ${(TH.step/2).toFixed(2)})`,
+        `Une paroi à plat plus mince que ${TH.seuil.toFixed(2)} mm ne tiendra pas en quelques couches. C'est le cas qu'aucune coupe ne montre : vue de dessus elle paraît large.`]);
+  } else {
+    const minDim=Math.min(s[0],s[1],s[2]);
+    if(minDim<1)
+      R.push(['⚠️','warn',`Encombrement très faible (${minDim.toFixed(1)} mm)`,`Sous ~1 mm, risque de casse. Attention : cette ligne ne regarde que les cotes d'encombrement — une paroi fine à l'intérieur d'une grosse pièce n'y apparaît pas. Lance « Analyser les épaisseurs » pour la mesure réelle.`]);
+  }
   if(g.footprintMm2>15000)
     R.push(['⚠️','warn',`Grande surface au sol (${(g.footprintMm2/100).toFixed(0)} cm²)`,`Risque de décollement/gauchissement sur grande base — ajoute un brim, et de l'ASA/ABS en enceinte si nécessaire.`]);
   if(s[2]>0 && s[2]/Math.max(s[0],s[1])>3)
@@ -843,7 +900,11 @@ function scaleTris(tris, factor){
 }
 function run(tris){
   if(!tris||tris.length<1){ alert("Fichier illisible ou vide (aucun triangle exploitable)."); return; }
-  RAW=tris; MH=null; showMesh(tris); update();
+  RAW=tris; MH=null;
+  TH=null; THMIN=null;                       // l'analyse d'épaisseurs porte sur l'ancien modèle
+  $('th-view').style.display='none';
+  $('th-res').innerHTML='Mesure l\'épaisseur <b>locale</b> de la matière, partout dans la pièce — une paroi de 0,3 mm au milieu d\'un gros volume ne se voit sur aucune cote d\'encombrement.';
+  showMesh(tris); update();
 }
 function update(){
   if(!RAW) return;
@@ -2274,6 +2335,291 @@ $('sl-dl').onclick=()=>{
   a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),5000);
 };
 
+// ══ CARTE D'ÉPAISSEURS (analyse DFM réelle, pas la boîte englobante) ════════
+// Le contrôle "détail fin" de la carte 3 ne regardait que la plus petite
+// dimension de la boîte englobante : une plaque de 200×200×0,3 mm passait pour
+// fine, mais une paroi de 0,3 mm au milieu d'une grosse pièce, jamais.
+//
+// Ici on mesure l'épaisseur LOCALE, en réutilisant le champ de distance déjà
+// calculé pour trancher. Deux mesures complémentaires, car une seule ment :
+//  · en plan (XY) : épaisseur = diamètre du plus grand disque inscrit passant
+//    par le pixel (algorithme d'épaisseur locale classique). Prendre 2×la
+//    distance à la peau serait faux partout ailleurs que sur l'axe médian —
+//    une paroi de 2 mm afficherait 0 sur ses bords et 2 mm en son centre.
+//  · en hauteur (Z) : longueur de la suite de couches consécutives où le pixel
+//    reste plein. Sans elle, une plaque horizontale de 0,3 mm d'épaisseur
+//    paraîtrait infiniment épaisse, puisque chaque coupe la voit large.
+// L'épaisseur retenue est le minimum des deux. Ce n'est pas un axe médian 3D
+// exact (une sphère inscrite), c'est sa très bonne approximation pour les deux
+// cas qui cassent en impression : la paroi verticale mince et la plaque mince.
+let TH=null;   // contexte conservé pour redessiner une couche sans tout refaire
+
+// Épaisseur locale 2D par disques inscrits. Les pixels sont parcourus du plus
+// profond au moins profond (tri par comptage, pas de tri générique) : le
+// premier disque qui couvre un pixel est forcément le plus grand, d'où le
+// court-circuit qui rend l'algorithme praticable.
+function slLocalThickness(F,W,H,out){
+  const n=W*H;
+  out.fill(0);
+  let maxd=0;
+  for(let i=0;i<n;i++){ const v=F[i]; if(v>maxd)maxd=v; }
+  if(maxd<=0) return 0;
+  // On ne peint QUE depuis l'axe médian. Un pixel dont un voisin porte un
+  // disque qui l'englobe (F[voisin] ≥ F[p] + distance) est redondant : son
+  // disque est inclus dans celui du voisin. Ce filtre est ce qui rend
+  // l'algorithme praticable — et surtout, il remplace le court-circuit
+  // "ce pixel est déjà couvert, je saute" qui, lui, était FAUX : le disque
+  // sauté couvrait aussi d'autres pixels, dont certains encore vierges. C'est
+  // ce qui laissait tout le pourtour des sections en valeurs aberrantes.
+  const D1=1, D2=Math.SQRT2, ridge=[];
+  for(let j=1;j<H-1;j++) for(let i=1;i<W-1;i++){
+    const p=j*W+i, d=F[p]; if(d<=0) continue;
+    if(F[p-1]>=d+D1||F[p+1]>=d+D1||F[p-W]>=d+D1||F[p+W]>=d+D1||
+       F[p-W-1]>=d+D2||F[p-W+1]>=d+D2||F[p+W-1]>=d+D2||F[p+W+1]>=d+D2) continue;
+    ridge.push(p);
+  }
+  const order=ridge;
+  // La matière déborde d'un DEMI-PIXEL au-delà du dernier centre de pixel plein,
+  // et le champ F suit la convention distance−0,5. La demi-épaisseur vraie vaut
+  // donc F+0,5, pas F. Ce demi-pixel n'est pas un détail cosmétique : pris à F,
+  // le disque inscrit s'arrête pile avant sa propre couronne, et tout le
+  // pourtour de chaque section gardait sa profondeur locale (0,5 px → 0,1 mm),
+  // ce qui faisait passer un montant de 8 mm pour une paroi de 0,11 mm.
+  // Rayon de peinture et VALEUR ne sont pas la même quantité. Le rayon doit
+  // valoir F+0,5 pour que le disque atteigne la surface réelle. La valeur, elle,
+  // ne peut pas être 2×(F+0,5) : une paroi de 7 pixels et une de 8 donnent la
+  // même distance maximale (4), donc ce choix surestimerait systématiquement
+  // les largeurs impaires d'un pixel entier — assez pour faire passer une paroi
+  // de 0,35 mm juste au-dessus d'un seuil de buse de 0,40. 2F+0,5 répartit
+  // l'erreur symétriquement : ±un demi-pixel, sans biais.
+  for(let k=0;k<order.length;k++){
+    const p=order[k], rad=F[p]+0.5, t=2*F[p]+0.5;
+    const px0=p%W, py0=(p/W)|0, r=Math.ceil(rad), r2=rad*rad;
+    const jA=Math.max(0,py0-r), jB=Math.min(H-1,py0+r);
+    for(let j=jA;j<=jB;j++){
+      const dy=j-py0, w=Math.floor(Math.sqrt(Math.max(0,r2-dy*dy)));
+      const iA=Math.max(0,px0-w), iB=Math.min(W-1,px0+w), base=j*W;
+      for(let i=iA;i<=iB;i++){ const q=base+i; if(out[q]<t) out[q]=t; }
+    }
+  }
+  return maxd;
+}
+
+async function slAnalyzeThickness(tris,cfg,onProgress){
+  const P=slPrepare(tris,cfg.bed);
+  const height=P.size[2];
+  if(height<=0) throw new Error('Modèle sans hauteur exploitable.');
+  // RÉSOLUTIONS. L'épaisseur mesurée se quantifie par pas de 2×px : à 0,1 mm/px
+  // une paroi de 0,35 mm ressort à 0,40 mm, soit pile sur un seuil de buse de
+  // 0,4 — le verdict devient un tirage au sort. Il faut donc viser un quantum
+  // nettement plus fin que le seuil de décision : px = seuil/8 → quantum au
+  // quart du seuil. Idem en Z : une plaque plus mince que le pas de coupe est
+  // indétectable, d'où le plancher à seuil/2 pour les petites pièces.
+  const step=Math.max(Math.min(cfg.seuil/2,0.25), height/200);
+  const nL=Math.max(1,Math.floor(height/step));
+  const margin=2*cfg.seuil;
+  let px=Math.min(cfg.seuil/8,0.1);
+  const spanX=P.box.x1-P.box.x0+2*margin, spanY=P.box.y1-P.box.y0+2*margin;
+  while((Math.ceil(spanX/px)+2)*(Math.ceil(spanY/px)+2)>7e5) px*=1.25;
+  const W=Math.ceil(spanX/px)+2, H=Math.ceil(spanY/px)+2, WH=W*H;
+  const R={W,H,px,x0:P.box.x0-margin-px,y0:P.box.y0-margin-px,
+           cnt:new Int32Array(H),off:new Int32Array(H),cx:new Float64Array(1024),cd:new Int8Array(1024)};
+  const mx=Math.max(W,H);
+  const C={f:new Float64Array(mx),d:new Float64Array(mx),v:new Int32Array(mx),z:new Float64Array(mx+1),
+           seed:new Float32Array(WH),e1:new Float32Array(WH),e2:new Float32Array(WH),t:new Float32Array(WH)};
+  const F=new Float32Array(WH), loc=new Float32Array(WH), mask=new Uint8Array(WH), sub=new Uint8Array(WH), bb=new Int32Array(4);
+  const roi={rw:0,rh:0,i0:0,j0:0};
+  // suivi des suites verticales : depuis quelle couche ce pixel est-il plein ?
+  const runFrom=new Int32Array(WH).fill(-1);
+  let minZrun=Infinity, minZpx=0;
+
+  const cell=px*px*step, cellA=px*px;
+  const MINZONE=0.5;   // mm² — sous cette surface, ce n'est pas une paroi, c'est un angle
+  // Zones connexes de matière sous un seuil. Indispensable : dans un angle, le
+  // plus grand disque inscrit tend vers zéro, donc CHAQUE coin de CHAQUE pièce
+  // signale une épaisseur nulle. Un minimum brut est structurellement
+  // inexploitable ; une paroi réellement mince, elle, forme une plage étendue.
+  const seen=new Uint8Array(WH), stack=new Int32Array(WH);
+  const zones=(thr)=>{
+    const {rw,rh}=roi, n0=rw*rh;
+    seen.fill(0,0,n0);
+    let nb=0, area=0, minT=Infinity;
+    for(let p0=0;p0<n0;p0++){
+      if(seen[p0]||!sub[p0]||loc[p0]*px>=thr) continue;
+      let sp=0, n=0, lo=Infinity; stack[sp++]=p0; seen[p0]=1;
+      while(sp){
+        const p=stack[--sp]; n++;
+        const t=loc[p]*px; if(t<lo) lo=t;
+        const x=p%rw, y=(p/rw)|0;
+        if(x>0)    { const q=p-1;  if(!seen[q]&&sub[q]&&loc[q]*px<thr){seen[q]=1;stack[sp++]=q;} }
+        if(x<rw-1) { const q=p+1;  if(!seen[q]&&sub[q]&&loc[q]*px<thr){seen[q]=1;stack[sp++]=q;} }
+        if(y>0)    { const q=p-rw; if(!seen[q]&&sub[q]&&loc[q]*px<thr){seen[q]=1;stack[sp++]=q;} }
+        if(y<rh-1) { const q=p+rw; if(!seen[q]&&sub[q]&&loc[q]*px<thr){seen[q]=1;stack[sp++]=q;} }
+      }
+      if(n*cellA>=MINZONE){ nb++; area+=n*cellA; if(lo<minT)minT=lo; }
+    }
+    return {nb, area, minT};
+  };
+  // Recopie de l'emprise réelle dans une grille compacte : champ de distance,
+  // épaisseur locale et zones connexes ne travaillent alors que sur la matière,
+  // pas sur la grille de la pièce entière (une section haute d'une pièce
+  // élancée en occupe quelques pour cent).
+  const toROI=()=>{
+    const pad=2;
+    const i0=Math.max(0,bb[0]-pad), i1=Math.min(W-1,bb[1]+pad);
+    const j0=Math.max(0,bb[2]-pad), j1=Math.min(H-1,bb[3]+pad);
+    const rw=i1-i0+1, rh=j1-j0+1;
+    for(let j=0;j<rh;j++) sub.set(mask.subarray((j0+j)*W+i0,(j0+j)*W+i1+1), j*rw);
+    roi.rw=rw; roi.rh=rh; roi.i0=i0; roi.j0=j0;
+    slField(sub,rw,rh,F,C,false);
+    slLocalThickness(F,rw,rh,loc);
+  };
+  let critZones=0, critVol=0, critMin=Infinity, critLayers=0, warnVol=0, totVol=0;
+  let ptr=0, active=[]; const seg=new Float64Array(4); let segs=[];
+  const zAt=i=>Math.min(height-1e-4,(i+0.5)*step);
+  let lastYield=performance.now();
+
+  for(let i=0;i<nL;i++){
+    const z=zAt(i);
+    while(ptr<P.n && P.zlo[P.ord[ptr]]<=z) active.push(P.ord[ptr++]);
+    if(active.length) active=active.filter(t=>P.zhi[t]>=z);
+    segs.length=0;
+    for(const t of active) if(slTriSeg(P,t,z,seg)) segs.push(seg[0],seg[1],seg[2],seg[3]);
+    slFill(segs,R,mask,bb);
+    // suites verticales : une suite qui s'achève donne l'épaisseur en Z
+    for(let k=0;k<WH;k++){
+      if(mask[k]){ if(runFrom[k]<0) runFrom[k]=i; }
+      else if(runFrom[k]>=0){
+        const len=(i-runFrom[k])*step;
+        if(len<minZrun){ minZrun=len; minZpx=1; } else if(len===minZrun) minZpx++;
+        runFrom[k]=-1;
+      }
+    }
+    if(bb[1]>=0){
+      toROI();
+      let np=0; const n0=roi.rw*roi.rh; for(let k=0;k<n0;k++) if(sub[k]) np++;
+      totVol+=np*cell;
+      const zc=zones(cfg.seuil), zw=zones(2*cfg.seuil);
+      if(zc.nb){ critZones+=zc.nb; critVol+=zc.area*step; critLayers++;
+                 if(zc.minT<critMin) critMin=zc.minT; }
+      warnVol+=zw.area*step;
+    }
+    if(performance.now()-lastYield>100){ onProgress&&onProgress((i+1)/nL); await slYield(); lastYield=performance.now(); }
+  }
+  // suites encore ouvertes au sommet
+  for(let k=0;k<WH;k++) if(runFrom[k]>=0){
+    const len=(nL-runFrom[k])*step;
+    if(len<minZrun){ minZrun=len; minZpx=1; }
+  }
+
+  const s=cfg.seuil;
+  return {P,R,C,F,loc,mask,sub,bb,roi,toROI,px,step,nL,height,seuil:s,W,H,
+          minRobust:isFinite(critMin)?critMin:null,
+          critZones, critVol, critLayers, warnVol, vol:totVol, minZone:MINZONE,
+          minZ:isFinite(minZrun)?minZrun:null,
+          // Une plaque n'est mesurée qu'au pas de coupe près : on alerte dès que
+          // la barre d'incertitude croise le seuil, pas seulement la valeur
+          // nominale — sous-estimer un risque est ici pire que sur-alerter.
+          zThin:isFinite(minZrun)&&(minZrun-step/2)<s};
+}
+
+// ── Recalcul d'une seule coupe pour l'affichage ─────────────────────────────
+// L'analyse ne conserve pas les 200 champs d'épaisseur (des dizaines de Mo) :
+// redessiner une coupe la recalcule, pour quelques dizaines de millisecondes.
+// Le balayage de triangles repart de zéro ici, car le curseur peut sauter à
+// n'importe quelle hauteur, dans n'importe quel ordre.
+function slThickLayer(idx){
+  if(!TH) return null;
+  const {P,R,mask,bb,step,height}=TH;
+  const z=Math.min(height-1e-4,(idx+0.5)*step);
+  const seg=new Float64Array(4), segs=[];
+  for(let t=0;t<P.n;t++) if(P.zlo[t]<=z&&P.zhi[t]>=z&&slTriSeg(P,t,z,seg)) segs.push(seg[0],seg[1],seg[2],seg[3]);
+  slFill(segs,R,mask,bb);
+  if(bb[1]<0) return {empty:true,z};
+  TH.toROI();
+  return {empty:false,z};
+}
+// Palette en trois classes franches plutôt qu'un dégradé : la question posée
+// est « est-ce imprimable », pas « combien de dixièmes ».
+function slThickDraw(idx){
+  const cv=$('th-canvas'), ctx=cv.getContext('2d');
+  const w=cv.clientWidth||600, h=240, dpr=Math.min(2,devicePixelRatio||1);
+  cv.width=w*dpr; cv.height=h*dpr; ctx.setTransform(dpr,0,0,dpr,0,0);
+  ctx.clearRect(0,0,w,h);
+  ctx.fillStyle='#86868b'; ctx.font='11px '+getComputedStyle(document.body).fontFamily;
+  if(!TH){ ctx.fillText('Lance l\'analyse pour voir la carte d\'épaisseurs',14,22); return; }
+  const info=slThickLayer(idx);
+  const {loc,sub,px,seuil,roi}=TH;
+  if(info.empty){ ctx.fillText(`Coupe ${idx+1} — Z ≈ ${info.z.toFixed(1)} mm : aucune matière`,14,22); return; }
+  const iw=roi.rw, ih=roi.rh;
+  const sc=Math.min((w-28)/iw,(h-34)/ih), ox=(w-iw*sc)/2, oy=(h-18-ih*sc)/2;
+  const img=ctx.createImageData(iw,ih), D=img.data;
+  for(let j=0;j<ih;j++) for(let i=0;i<iw;i++){
+    const k=j*iw+i, o=((ih-1-j)*iw+i)*4;                    // Y écran inversé
+    if(!sub[k]){ D[o+3]=0; continue; }
+    const t=loc[k]*px;
+    const c = t<seuil ? [255,69,58] : t<2*seuil ? [255,159,10] : [48,209,88];
+    D[o]=c[0]; D[o+1]=c[1]; D[o+2]=c[2]; D[o+3]=235;
+  }
+  const off=document.createElement('canvas'); off.width=iw; off.height=ih;
+  off.getContext('2d').putImageData(img,0,0);
+  ctx.imageSmoothingEnabled=false;
+  ctx.drawImage(off,ox,oy,iw*sc,ih*sc);
+  ctx.fillStyle='#86868b';
+  ctx.fillText(`coupe ${idx+1}/${TH.nL} · Z ≈ ${info.z.toFixed(1)} mm · seuil ${seuil.toFixed(2)} mm`,14,h-4);
+}
+
+// ── UI de l'analyse d'épaisseurs ────────────────────────────────────────────
+let THMIN=null;    // épaisseur minimale mesurée, réinjectée dans les risques
+function thSeuil(){
+  const pr=PRINTERS[$('printer').value]||PRINTERS.bambu_a1;
+  // FDM : rien ne peut être plus fin qu'un cordon de buse. Résine : la limite
+  // vient de la tenue mécanique, pas de la machine — 0,5 mm est l'ordre de
+  // grandeur usuel d'une paroi qui survit au décollement.
+  return pr.fdm ? +$('sl-noz').value : 0.5;
+}
+$('th-go').onclick=async()=>{
+  if(!SCALED){ alert('Charge un modèle d\'abord.'); return; }
+  const pr=PRINTERS[$('printer').value]||PRINTERS.bambu_a1;
+  const btn=$('th-go'), bar=$('th-bar'), res=$('th-res');
+  btn.disabled=true; bar.style.display='block'; bar.firstElementChild.style.width='0%';
+  res.innerHTML='Analyse des épaisseurs en cours…';
+  const t0=performance.now();
+  try{
+    TH=await slAnalyzeThickness(SCALED,{bed:pr.bed,seuil:thSeuil()},
+      p=>{ bar.firstElementChild.style.width=(p*100).toFixed(0)+'%'; });
+    THMIN=TH.minRobust;
+    const s=TH.seuil, pc=v=>TH.vol>0?(v/TH.vol*100):0;
+    const dt=((performance.now()-t0)/1000).toFixed(1);
+    res.innerHTML=
+      (THMIN!=null
+        ? `<b style="color:var(--red)">Parois sous le seuil de ${s.toFixed(2)} mm</b> — minimum mesuré <b>${THMIN.toFixed(2)} mm</b><br>`+
+          `Présentes sur <b>${TH.critLayers} coupes / ${TH.nL}</b> · volume concerné <b>${TH.critVol.toFixed(0)} mm³</b> (${pc(TH.critVol).toFixed(1)} % de la pièce)<br>`
+        : `<b style="color:var(--green)">Aucune paroi sous le seuil de ${s.toFixed(2)} mm</b> <span style="color:var(--dim2)">(${pr.fdm?'diamètre de buse':'paroi résine usuelle'})</span><br>`)+
+      `Matière fragile, entre 1 et 2 × le seuil : <b>${pc(Math.max(0,TH.warnVol-TH.critVol)).toFixed(1)} %</b><br>`+
+      (TH.minZ!=null?`Plaque horizontale la plus mince : <b style="color:${TH.zThin?'var(--red)':'var(--txt)'}">${TH.minZ.toFixed(2)} mm</b> <span style="color:var(--dim2)">± ${(TH.step/2).toFixed(2)}</span><br>`:'')+
+      `<span style="color:var(--dim2)">${TH.nL} coupes de ${TH.step.toFixed(2)} mm · ${TH.px.toFixed(3)} mm/px `+
+      `→ épaisseur mesurée au <b>±${(TH.px).toFixed(2)} mm</b> près, plaques horizontales au ${TH.step.toFixed(2)} mm près · ${dt} s`+
+      (2*TH.px>TH.seuil/2?` <span style="color:var(--amber)">— pièce volumineuse : résolution dégradée, un défaut plus fin que ${(2*TH.px).toFixed(2)} mm peut passer inaperçu</span>`:'')+
+      `<br>Épaisseur locale par disques inscrits sur l'axe médian ; seules les zones de plus de ${TH.minZone} mm² comptent — `+
+      `sous cette surface il ne s'agit pas d'une paroi mais d'un angle, où la mesure tend mathématiquement vers zéro</span>`;
+    $('th-view').style.display='block';
+    const sl=$('th-slider'); sl.disabled=false; sl.max=TH.nL; sl.value=Math.max(1,Math.round(TH.nL*0.35));
+    slThickDraw(+sl.value-1);
+    update();   // la carte 3 utilise désormais la valeur mesurée
+  }catch(err){
+    console.error(err);
+    res.innerHTML=`<span style="color:var(--red)">Échec de l'analyse : ${err&&err.message?err.message:err}</span>`;
+  }finally{
+    btn.disabled=false; setTimeout(()=>{bar.style.display='none';},900);
+  }
+};
+$('th-slider').addEventListener('input',()=>{
+  const n=+$('th-slider').value;
+  $('th-lbl').textContent=TH?`${n} / ${TH.nL}`:'';
+  slThickDraw(n-1);
+});
+
 // ══ PLANCHE PHOTOGRAMMÉTRIE (A4, unités SVG = mm) ═══════════════════════════
 // Pastilles d'identification (1-4 points), barres de contrôle 100,0 mm,
 // cadre carte bancaire 85,60 × 53,98 mm pour vérifier l'échelle d'impression,
@@ -2334,6 +2680,7 @@ addEventListener('afterprint',()=>document.body.classList.remove('print-mat'));
 // petite API de debug/power-users (console) — volontairement exposée
 window.PrintChecker={gParse,gPauseBlock,gApply,gEdits,gSafety,
   slice:(o={})=>slSlice(SCALED,{...slCfg(),...o}), slCfg,
+  get _th(){ return TH; }, thickLayer:slThickLayer,
   get _3d(){ return {data:G3D, viewer:g3r}; },
   get _gcode(){ return SLGCODE; }};
 
