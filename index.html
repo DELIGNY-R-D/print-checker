@@ -2433,6 +2433,30 @@ function slDilate(src,W,H,r,dst,tmp){
   }
 }
 
+// « Cette matière est-elle plus épaisse que T ? » est exactement une OUVERTURE
+// morphologique par un disque de rayon T/2 : l'ouverture efface tout ce qu'un
+// tel disque ne peut pas couvrir de l'intérieur. Et une ouverture se calcule
+// par deux transformées de distance, sans peindre un seul disque :
+//   1. les centres valides sont les pixels de profondeur ≥ r  (déjà dans F) ;
+//   2. la distance à ce jeu de centres dit si un disque nous recouvre.
+// Le résultat est EXACT pour un seuil binaire — un disque plus grand qui tient
+// contient toujours un disque de rayon r — alors que la peinture explicite des
+// disques coûtait 81 % du temps total mesuré.
+function slOpenThin(F,sub,W,H,rPx,C,out){
+  const n=W*H;
+  for(let i=0;i<n;i++) C.seed[i]=(sub[i]&&F[i]>=rPx)?0:SL_BIG;
+  slEdt(C.seed,W,H,C.e2,C);
+  // Rayon d'érosion (rPx) et rayon de recouvrement (rPx+0,5) ne sont PAS le
+  // même nombre : le disque inscrit centré sur un pixel de profondeur F a pour
+  // rayon réel F+0,5, la matière débordant d'un demi-pixel au-delà du dernier
+  // centre plein. Prendre rPx des deux côtés sous-couvre d'un demi-pixel et
+  // déclare fines les bordures de n'importe quel volume épais.
+  const lim=(rPx+0.5)*(rPx+0.5);
+  let nThin=0;
+  for(let i=0;i<n;i++){ const t=(sub[i]&&C.e2[i]>lim)?1:0; out[i]=t; nThin+=t; }
+  return nThin;
+}
+
 async function slAnalyzeThickness(tris,cfg,onProgress){
   const P=slPrepare(tris,cfg.bed);
   const height=P.size[2];
@@ -2475,27 +2499,33 @@ async function slAnalyzeThickness(tris,cfg,onProgress){
   // plus grand disque inscrit tend vers zéro, donc CHAQUE coin de CHAQUE pièce
   // signale une épaisseur nulle. Un minimum brut est structurellement
   // inexploitable ; une paroi réellement mince, elle, forme une plage étendue.
-  const seen=new Uint8Array(WH), stack=new Int32Array(WH);
-  const zones=(thr)=>{
+  const seen=new Uint8Array(WH), stack=new Int32Array(WH),
+        thinC=new Uint8Array(WH), thinW=new Uint8Array(WH);
+  // Composantes connexes d'un masque binaire, filtrées par surface. `withVal`
+  // demande en plus l'épaisseur minimale réelle — seul cas où le champ exact
+  // d'épaisseur locale est nécessaire, donc calculé seulement là.
+  const zonesOf=(bin,withVal)=>{
     const {rw,rh}=roi, n0=rw*rh;
     seen.fill(0,0,n0);
     let nb=0, area=0, minT=Infinity;
     for(let p0=0;p0<n0;p0++){
-      if(seen[p0]||!sub[p0]||loc[p0]*px>=thr) continue;
+      if(seen[p0]||!bin[p0]) continue;
       let sp=0, n=0, lo=Infinity; stack[sp++]=p0; seen[p0]=1;
       while(sp){
         const p=stack[--sp]; n++;
-        const t=loc[p]*px; if(t<lo) lo=t;
+        if(withVal){ const t=loc[p]*px; if(t<lo) lo=t; }
         const x=p%rw, y=(p/rw)|0;
-        if(x>0)    { const q=p-1;  if(!seen[q]&&sub[q]&&loc[q]*px<thr){seen[q]=1;stack[sp++]=q;} }
-        if(x<rw-1) { const q=p+1;  if(!seen[q]&&sub[q]&&loc[q]*px<thr){seen[q]=1;stack[sp++]=q;} }
-        if(y>0)    { const q=p-rw; if(!seen[q]&&sub[q]&&loc[q]*px<thr){seen[q]=1;stack[sp++]=q;} }
-        if(y<rh-1) { const q=p+rw; if(!seen[q]&&sub[q]&&loc[q]*px<thr){seen[q]=1;stack[sp++]=q;} }
+        if(x>0)    { const q=p-1;  if(!seen[q]&&bin[q]){seen[q]=1;stack[sp++]=q;} }
+        if(x<rw-1) { const q=p+1;  if(!seen[q]&&bin[q]){seen[q]=1;stack[sp++]=q;} }
+        if(y>0)    { const q=p-rw; if(!seen[q]&&bin[q]){seen[q]=1;stack[sp++]=q;} }
+        if(y<rh-1) { const q=p+rw; if(!seen[q]&&bin[q]){seen[q]=1;stack[sp++]=q;} }
       }
       if(n*cellA>=MINZONE){ nb++; area+=n*cellA; if(lo<minT)minT=lo; }
     }
     return {nb, area, minT};
   };
+  // rayons de disque correspondant aux deux seuils (épaisseur = 2F+0,5 px)
+  const rCrit=(cfg.seuil/px-0.5)/2, rWarn=(2*cfg.seuil/px-0.5)/2;
   // Recopie de l'emprise réelle dans une grille compacte : champ de distance,
   // épaisseur locale et zones connexes ne travaillent alors que sur la matière,
   // pas sur la grille de la pièce entière (une section haute d'une pièce
@@ -2506,13 +2536,16 @@ async function slAnalyzeThickness(tris,cfg,onProgress){
     const rw=i1-i0+1, rh=j1-j0+1;
     for(let j=0;j<rh;j++) sub.set(mask.subarray((j0+j)*W+i0,(j0+j)*W+i1+1), j*rw);
     roi.rw=rw; roi.rh=rh; roi.i0=i0; roi.j0=j0;
+    _lap('copie');
     slField(sub,rw,rh,F,C,false);
-    slLocalThickness(F,rw,rh,loc);
+    _lap('field');
   };
   let critZones=0, critVol=0, critMin=Infinity, critLayers=0, warnVol=0, totVol=0;
   let ptr=0, active=[]; const seg=new Float64Array(4); let segs=[];
   const zAt=i=>Math.min(height-1e-4,(i+0.5)*step);
   let lastYield=performance.now();
+  const PROF={raster:0,zrun:0,field:0,ouverture:0,local:0,zones:0,supports:0,copie:0};
+  let _t=performance.now(); const _lap=k=>{ const n=performance.now(); PROF[k]+=n-_t; _t=n; };
 
   for(let i=0;i<nL;i++){
     const z=zAt(i);
@@ -2521,6 +2554,7 @@ async function slAnalyzeThickness(tris,cfg,onProgress){
     segs.length=0;
     for(const t of active) if(slTriSeg(P,t,z,seg)) segs.push(seg[0],seg[1],seg[2],seg[3]);
     slFill(segs,R,mask,bb);
+    _lap('raster');
     // suites verticales : une suite qui s'achève donne l'épaisseur en Z
     for(let k=0;k<WH;k++){
       if(mask[k]){ if(runFrom[k]<0) runFrom[k]=i; }
@@ -2530,6 +2564,7 @@ async function slAnalyzeThickness(tris,cfg,onProgress){
         runFrom[k]=-1;
       }
     }
+    _lap('zrun');
     if(bb[1]>=0){
       toROI(Math.max(2,rSup+1));
       const {rw,rh,i0,j0}=roi, n0=rw*rh;
@@ -2567,13 +2602,35 @@ async function slAnalyzeThickness(tris,cfg,onProgress){
       }
       for(let j=0;j<rh;j++){ const rb=j*rw, fb=(j0+j)*W+i0;
         for(let x=0;x<rw;x++) if(sub[rb+x]) lastZ[fb+x]=z; }
-      const zc=zones(cfg.seuil), zw=zones(2*cfg.seuil);
-      if(zc.nb){ critZones+=zc.nb; critVol+=zc.area*step; critLayers++;
-                 if(zc.minT<critMin) critMin=zc.minT; }
-      warnVol+=zw.area*step;
+      _lap('supports');
+      // Ouvertures : deux transformées de distance au lieu de millions de
+      // disques peints. L'épaisseur locale exacte n'est calculée que si une
+      // zone critique existe vraiment — c'est-à-dire presque jamais.
+      const nC=slOpenThin(F,sub,rw,rh,rCrit,C,thinC);
+      const nW=slOpenThin(F,sub,rw,rh,rWarn,C,thinW);
+      _lap('ouverture');
+      // Ordre volontaire : le filtre de surface AVANT le calcul exact. Les coins
+      // échouent toujours à l'ouverture (le disque inscrit y tend vers zéro) ;
+      // sans ce test préalable, chaque couche de chaque pièce saine déclenchait
+      // l'épaisseur locale exacte pour des artefacts finalement rejetés — 62 %
+      // du temps restant, mesuré.
+      if(nC){
+        const pre=zonesOf(thinC,false);
+        _lap('zones');
+        if(pre.nb){
+          slLocalThickness(F,rw,rh,loc);
+          _lap('local');
+          const zc=zonesOf(thinC,true);
+          critZones+=zc.nb; critVol+=zc.area*step; critLayers++;
+          if(zc.minT<critMin) critMin=zc.minT;
+        }
+      }
+      if(nW) warnVol+=zonesOf(thinW,false).area*step;
+      _lap('zones');
       prevM.set(mask);
     } else prevM.fill(0);
-    if(performance.now()-lastYield>100){ onProgress&&onProgress((i+1)/nL); await slYield(); lastYield=performance.now(); }
+    _lap('copie');
+    if(performance.now()-lastYield>100){ onProgress&&onProgress((i+1)/nL); await slYield(); lastYield=performance.now(); _t=lastYield; }
   }
   // suites encore ouvertes au sommet
   for(let k=0;k<WH;k++) if(runFrom[k]>=0){
@@ -2585,7 +2642,7 @@ async function slAnalyzeThickness(tris,cfg,onProgress){
   return {P,R,C,F,loc,mask,sub,bb,roi,toROI,px,step,nL,height,seuil:s,W,H,
           minRobust:isFinite(critMin)?critMin:null,
           critZones, critVol, critLayers, warnVol, vol:totVol, minZone:MINZONE,
-          supArea, supVol, supLayers, supIslands, supMaxIsland, supAngle:OVER,
+          supArea, supVol, supLayers, supIslands, supMaxIsland, supAngle:OVER, prof:PROF,
           minZ:isFinite(minZrun)?minZrun:null,
           // Une plaque n'est mesurée qu'au pas de coupe près : on alerte dès que
           // la barre d'incertitude croise le seuil, pas seulement la valeur
@@ -2607,6 +2664,9 @@ function slThickLayer(idx){
   slFill(segs,R,mask,bb);
   if(bb[1]<0) return {empty:true,z};
   TH.toROI();
+  // L'affichage est le seul endroit qui a besoin du champ d'épaisseur continu :
+  // une coupe à la fois, donc son coût n'a plus d'importance.
+  slLocalThickness(TH.F,TH.roi.rw,TH.roi.rh,TH.loc);
   return {empty:false,z};
 }
 // Palette en trois classes franches plutôt qu'un dégradé : la question posée
