@@ -763,6 +763,12 @@ function risks(g, est){
     else
       R.push(['✅','ok',`Épaisseurs saines (aucune paroi sous ${seuil.toFixed(2)} mm)`,
         `Mesuré localement partout dans la pièce, pas déduit de l'encombrement.`]);
+    // Supports : chiffrés, jamais générés. La trancheuse intégrée n'en pose
+    // pas — le dire est le minimum, sinon elle sort un fichier qui imprime
+    // dans le vide sans un mot.
+    if(TH.supArea>0)
+      R.push(['⚠️','warn',`${(TH.supArea/100).toFixed(1)} cm² de matière en l'air — supports nécessaires`,
+        `Réparti sur ${TH.supLayers} coupe${TH.supLayers>1?'s':''} (plus grand îlot ${TH.supMaxIsland.toFixed(0)} mm²), au-delà de ${TH.supAngle}° de surplomb. Environ ${(TH.supVol/1000).toFixed(1)} cm³ de matière de support à prévoir. La trancheuse de cette page n'en génère pas : active-les dans ton slicer, ou réoriente la pièce.`]);
     if(TH.zThin&&TH.minZ!=null)
       R.push(['⚠️','warn',`Plaque horizontale de ${TH.minZ.toFixed(2)} mm (± ${(TH.step/2).toFixed(2)})`,
         `Une paroi à plat plus mince que ${TH.seuil.toFixed(2)} mm ne tiendra pas en quelques couches. C'est le cas qu'aucune coupe ne montre : vue de dessus elle paraît large.`]);
@@ -2405,6 +2411,28 @@ function slLocalThickness(F,W,H,out){
   return maxd;
 }
 
+// Dilatation binaire séparable (fenêtre carrée 2r+1). Sert à répondre à « cette
+// matière repose-t-elle sur quelque chose », en tolérant le décalage normal
+// d'une couche à l'autre : un mur à 50° avance de step/tan(50°) par couche, ce
+// qui est imprimable ; au-delà, la buse extrude au-dessus du vide.
+// Les deux passes balaient en lignes — jamais en colonnes, dont le pas de W
+// flottants coûte un défaut de cache par pixel (leçon de l'EDT de la trancheuse).
+function slDilate(src,W,H,r,dst,tmp){
+  for(let j=0;j<H;j++){
+    const b=j*W;
+    for(let i=0;i<W;i++){
+      const a=i>r?i-r:0, z=i+r<W-1?i+r:W-1;
+      let v=0; for(let k=a;k<=z;k++) if(src[b+k]){v=1;break;}
+      tmp[b+i]=v;
+    }
+  }
+  dst.fill(0,0,W*H);
+  for(let j=0;j<H;j++){
+    const b=j*W, a=j>r?j-r:0, z=j+r<H-1?j+r:H-1;
+    for(let k=a;k<=z;k++){ const bk=k*W; for(let i=0;i<W;i++) if(tmp[bk+i]) dst[b+i]=1; }
+  }
+}
+
 async function slAnalyzeThickness(tris,cfg,onProgress){
   const P=slPrepare(tris,cfg.bed);
   const height=P.size[2];
@@ -2432,6 +2460,14 @@ async function slAnalyzeThickness(tris,cfg,onProgress){
   // suivi des suites verticales : depuis quelle couche ce pixel est-il plein ?
   const runFrom=new Int32Array(WH).fill(-1);
   let minZrun=Infinity, minZpx=0;
+  // ── supports : matière qui n'a rien sous elle ────────────────────────────
+  const prevM=new Uint8Array(WH), pv=new Uint8Array(WH), dil=new Uint8Array(WH),
+        tmpD=new Uint8Array(WH), unsup=new Uint8Array(WH);
+  const lastZ=new Float32Array(WH);
+  const OVER=50;                                   // ° — même limite que la carte 3
+  const rSup=Math.max(1,Math.round((step/Math.tan(OVER*Math.PI/180))/px));
+  const SUPFILL=0.15;                              // remplissage typique d'un support
+  let supArea=0, supVol=0, supLayers=0, supMaxIsland=0, supIslands=0;
 
   const cell=px*px*step, cellA=px*px;
   const MINZONE=0.5;   // mm² — sous cette surface, ce n'est pas une paroi, c'est un angle
@@ -2464,8 +2500,7 @@ async function slAnalyzeThickness(tris,cfg,onProgress){
   // épaisseur locale et zones connexes ne travaillent alors que sur la matière,
   // pas sur la grille de la pièce entière (une section haute d'une pièce
   // élancée en occupe quelques pour cent).
-  const toROI=()=>{
-    const pad=2;
+  const toROI=(pad=2)=>{
     const i0=Math.max(0,bb[0]-pad), i1=Math.min(W-1,bb[1]+pad);
     const j0=Math.max(0,bb[2]-pad), j1=Math.min(H-1,bb[3]+pad);
     const rw=i1-i0+1, rh=j1-j0+1;
@@ -2496,14 +2531,48 @@ async function slAnalyzeThickness(tris,cfg,onProgress){
       }
     }
     if(bb[1]>=0){
-      toROI();
-      let np=0; const n0=roi.rw*roi.rh; for(let k=0;k<n0;k++) if(sub[k]) np++;
+      toROI(Math.max(2,rSup+1));
+      const {rw,rh,i0,j0}=roi, n0=rw*rh;
+      let np=0; for(let k=0;k<n0;k++) if(sub[k]) np++;
       totVol+=np*cell;
+      // ── supports : la matière de cette couche repose-t-elle sur la précédente ?
+      if(i>0){
+        for(let j=0;j<rh;j++) pv.set(prevM.subarray((j0+j)*W+i0,(j0+j)*W+i0+rw), j*rw);
+        slDilate(pv,rw,rh,rSup,dil,tmpD);
+        let nUn=0;
+        for(let k=0;k<n0;k++){ const u=(sub[k]&&!dil[k])?1:0; unsup[k]=u; if(u)nUn++; }
+        if(nUn){
+          // Volume de support : chaque pixel en l'air doit être porté jusqu'à la
+          // matière qui se trouve dessous — d'où la mémoire de la dernière
+          // hauteur occupée, pixel par pixel.
+          let area=0, big=0, nIsl=0;
+          seen.fill(0,0,n0);
+          for(let p0=0;p0<n0;p0++){
+            if(seen[p0]||!unsup[p0]) continue;
+            let sp=0,n=0; stack[sp++]=p0; seen[p0]=1;
+            while(sp){
+              const p=stack[--sp]; n++;
+              const x=p%rw, y=(p/rw)|0;
+              supVol+=cellA*Math.max(0,z-lastZ[(j0+y)*W+i0+x])*SUPFILL;
+              if(x>0)   {const q=p-1; if(!seen[q]&&unsup[q]){seen[q]=1;stack[sp++]=q;}}
+              if(x<rw-1){const q=p+1; if(!seen[q]&&unsup[q]){seen[q]=1;stack[sp++]=q;}}
+              if(y>0)   {const q=p-rw;if(!seen[q]&&unsup[q]){seen[q]=1;stack[sp++]=q;}}
+              if(y<rh-1){const q=p+rw;if(!seen[q]&&unsup[q]){seen[q]=1;stack[sp++]=q;}}
+            }
+            const a=n*cellA;
+            if(a>=1){ nIsl++; area+=a; if(a>big)big=a; }
+          }
+          if(area>0){ supArea+=area; supLayers++; supIslands+=nIsl; if(big>supMaxIsland)supMaxIsland=big; }
+        }
+      }
+      for(let j=0;j<rh;j++){ const rb=j*rw, fb=(j0+j)*W+i0;
+        for(let x=0;x<rw;x++) if(sub[rb+x]) lastZ[fb+x]=z; }
       const zc=zones(cfg.seuil), zw=zones(2*cfg.seuil);
       if(zc.nb){ critZones+=zc.nb; critVol+=zc.area*step; critLayers++;
                  if(zc.minT<critMin) critMin=zc.minT; }
       warnVol+=zw.area*step;
-    }
+      prevM.set(mask);
+    } else prevM.fill(0);
     if(performance.now()-lastYield>100){ onProgress&&onProgress((i+1)/nL); await slYield(); lastYield=performance.now(); }
   }
   // suites encore ouvertes au sommet
@@ -2516,6 +2585,7 @@ async function slAnalyzeThickness(tris,cfg,onProgress){
   return {P,R,C,F,loc,mask,sub,bb,roi,toROI,px,step,nL,height,seuil:s,W,H,
           minRobust:isFinite(critMin)?critMin:null,
           critZones, critVol, critLayers, warnVol, vol:totVol, minZone:MINZONE,
+          supArea, supVol, supLayers, supIslands, supMaxIsland, supAngle:OVER,
           minZ:isFinite(minZrun)?minZrun:null,
           // Une plaque n'est mesurée qu'au pas de coupe près : on alerte dès que
           // la barre d'incertitude croise le seuil, pas seulement la valeur
@@ -2598,6 +2668,10 @@ $('th-go').onclick=async()=>{
         : `<b style="color:var(--green)">Aucune paroi sous le seuil de ${s.toFixed(2)} mm</b> <span style="color:var(--dim2)">(${pr.fdm?'diamètre de buse':'paroi résine usuelle'})</span><br>`)+
       `Matière fragile, entre 1 et 2 × le seuil : <b>${pc(Math.max(0,TH.warnVol-TH.critVol)).toFixed(1)} %</b><br>`+
       (TH.minZ!=null?`Plaque horizontale la plus mince : <b style="color:${TH.zThin?'var(--red)':'var(--txt)'}">${TH.minZ.toFixed(2)} mm</b> <span style="color:var(--dim2)">± ${(TH.step/2).toFixed(2)}</span><br>`:'')+
+      (TH.supArea>0
+        ? `<b style="color:var(--amber)">Supports nécessaires : ${(TH.supArea/100).toFixed(1)} cm² en l'air</b> sur ${TH.supLayers} coupe${TH.supLayers>1?'s':''} · `+
+          `matière de support estimée <b>${(TH.supVol/1000).toFixed(1)} cm³</b> (${TH.vol>0?(TH.supVol/TH.vol*100).toFixed(0):'—'} % du volume de la pièce)<br>`
+        : `<b style="color:var(--green)">Aucune zone en l'air</b> — imprimable sans support dans cette orientation<br>`)+
       `<span style="color:var(--dim2)">${TH.nL} coupes de ${TH.step.toFixed(2)} mm · ${TH.px.toFixed(3)} mm/px `+
       `→ épaisseur mesurée au <b>±${(TH.px).toFixed(2)} mm</b> près, plaques horizontales au ${TH.step.toFixed(2)} mm près · ${dt} s`+
       (2*TH.px>TH.seuil/2?` <span style="color:var(--amber)">— pièce volumineuse : résolution dégradée, un défaut plus fin que ${(2*TH.px).toFixed(2)} mm peut passer inaperçu</span>`:'')+
