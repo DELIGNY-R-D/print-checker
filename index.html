@@ -757,7 +757,7 @@ function risks(g, est){
     if(THMIN!=null)
       R.push(['🚫','warn',`Parois sous ${seuil.toFixed(2)} mm — minimum mesuré ${THMIN.toFixed(2)} mm`,
         `${pct.toFixed(1)} % de la matière est plus fine qu'un cordon de buse, sur ${TH.critLayers} coupes de la pièce : ces zones ne sortiront pas, ou sortiront en toile d'araignée. Épaissis-les dans le modèle — aucun réglage de tranchage ne les rattrapera.`]);
-    else if(TH.vol>0&&(TH.warnVol-TH.critVol)/TH.vol>0.02)
+    else if(!TH.screen&&TH.vol>0&&(TH.warnVol-TH.critVol)/TH.vol>0.02)
       R.push(['⚠️','warn',`Parois fines sur ${((TH.warnVol-TH.critVol)/TH.vol*100).toFixed(1)} % de la pièce`,
         `Imprimable, mais entre une et deux largeurs de cordon : fragile, et sans remplissage possible dans ces zones. Vise au moins ${(2*seuil).toFixed(1)} mm si la pièce est sollicitée.`]);
     else
@@ -1741,6 +1741,7 @@ function slTriSeg(P,i,z,out){
 function slFill(segs, R, mask, bb){
   mask.fill(0);
   bb[0]=1e9; bb[1]=-1; bb[2]=1e9; bb[3]=-1;   // i0,i1,j0,j1 de l'emprise remplie
+  if(bb.length>4) bb[4]=2147483647;           // + largeur de segment minimale (µm)
   const {W,H,x0,y0,px,cnt,off,cx,cd}=R;
   cnt.fill(0);
   const ns=segs.length/4;
@@ -1778,6 +1779,13 @@ function slFill(segs, R, mask, bb){
       const prev=w; w+=CD[a];
       if(prev===0&&w!==0) xs=CX[a];
       else if(prev!==0&&w===0){
+        // Largeur du segment de matière, en millimètres RÉELS et indépendante
+        // du pas de raster. Une paroi plus fine que le pas peut disparaître de
+        // la rastérisation ; sa corde, elle, reste mesurable ici. Et comme
+        // l'épaisseur perpendiculaire est toujours ≤ la corde horizontale, un
+        // segment étroit PROUVE une paroi mince : c'est le garde-fou qui rend
+        // un dépistage à basse résolution sûr.
+        if(bb.length>4){ const wmm=Math.round((CX[a]-xs)*1000); if(wmm>0&&wmm<bb[4]) bb[4]=wmm; }
         let i0=Math.ceil((xs-x0)/px-0.5), i1=Math.ceil((CX[a]-x0)/px-0.5)-1;
         if(i0<0)i0=0; if(i1>W-1)i1=W-1;
         for(let i=i0;i<=i1;i++) mask[base+i]=1;
@@ -2470,7 +2478,12 @@ async function slAnalyzeThickness(tris,cfg,onProgress){
   const step=Math.max(Math.min(cfg.seuil/2,0.25), height/200);
   const nL=Math.max(1,Math.floor(height/step));
   const margin=2*cfg.seuil;
-  let px=Math.min(cfg.seuil/8,0.1);
+  // Mode DÉPISTAGE : raster grossier et seuil généreux (2× le seuil réel). Si
+  // rien n'y descend sous le double du seuil, alors rien n'est sous le seuil —
+  // conclusion sûre obtenue à une fraction du coût. Sinon on refait tout fin.
+  const screen=!!cfg.screen;
+  const thrCrit=screen?cfg.seuil*2:cfg.seuil;
+  let px=cfg.px||Math.min(cfg.seuil/8,0.1);
   const spanX=P.box.x1-P.box.x0+2*margin, spanY=P.box.y1-P.box.y0+2*margin;
   while((Math.ceil(spanX/px)+2)*(Math.ceil(spanY/px)+2)>7e5) px*=1.25;
   const W=Math.ceil(spanX/px)+2, H=Math.ceil(spanY/px)+2, WH=W*H;
@@ -2479,7 +2492,8 @@ async function slAnalyzeThickness(tris,cfg,onProgress){
   const mx=Math.max(W,H);
   const C={f:new Float64Array(mx),d:new Float64Array(mx),v:new Int32Array(mx),z:new Float64Array(mx+1),
            seed:new Float32Array(WH),e1:new Float32Array(WH),e2:new Float32Array(WH),t:new Float32Array(WH)};
-  const F=new Float32Array(WH), loc=new Float32Array(WH), mask=new Uint8Array(WH), sub=new Uint8Array(WH), bb=new Int32Array(4);
+  const F=new Float32Array(WH), loc=new Float32Array(WH), mask=new Uint8Array(WH), sub=new Uint8Array(WH), bb=new Int32Array(5);
+  let minSpan=Infinity;   // plus fine corde horizontale rencontrée, en mm
   const roi={rw:0,rh:0,i0:0,j0:0};
   // suivi des suites verticales : depuis quelle couche ce pixel est-il plein ?
   const runFrom=new Int32Array(WH).fill(-1);
@@ -2525,7 +2539,7 @@ async function slAnalyzeThickness(tris,cfg,onProgress){
     return {nb, area, minT};
   };
   // rayons de disque correspondant aux deux seuils (épaisseur = 2F+0,5 px)
-  const rCrit=(cfg.seuil/px-0.5)/2, rWarn=(2*cfg.seuil/px-0.5)/2;
+  const rCrit=(thrCrit/px-0.5)/2, rWarn=(2*cfg.seuil/px-0.5)/2;
   // Recopie de l'emprise réelle dans une grille compacte : champ de distance,
   // épaisseur locale et zones connexes ne travaillent alors que sur la matière,
   // pas sur la grille de la pièce entière (une section haute d'une pièce
@@ -2554,6 +2568,7 @@ async function slAnalyzeThickness(tris,cfg,onProgress){
     segs.length=0;
     for(const t of active) if(slTriSeg(P,t,z,seg)) segs.push(seg[0],seg[1],seg[2],seg[3]);
     slFill(segs,R,mask,bb);
+    if(bb[4]<2147483647){ const s=bb[4]/1000; if(s<minSpan) minSpan=s; }
     _lap('raster');
     // suites verticales : une suite qui s'achève donne l'épaisseur en Z
     for(let k=0;k<WH;k++){
@@ -2607,7 +2622,9 @@ async function slAnalyzeThickness(tris,cfg,onProgress){
       // disques peints. L'épaisseur locale exacte n'est calculée que si une
       // zone critique existe vraiment — c'est-à-dire presque jamais.
       const nC=slOpenThin(F,sub,rw,rh,rCrit,C,thinC);
-      const nW=slOpenThin(F,sub,rw,rh,rWarn,C,thinW);
+      // En dépistage, la seconde ouverture (matière « fragile ») ne sert à rien :
+      // elle ne décide de rien, et c'est la moitié du coût des ouvertures.
+      const nW=screen?0:slOpenThin(F,sub,rw,rh,rWarn,C,thinW);
       _lap('ouverture');
       // Ordre volontaire : le filtre de surface AVANT le calcul exact. Les coins
       // échouent toujours à l'ouverture (le disque inscrit y tend vers zéro) ;
@@ -2618,11 +2635,14 @@ async function slAnalyzeThickness(tris,cfg,onProgress){
         const pre=zonesOf(thinC,false);
         _lap('zones');
         if(pre.nb){
-          slLocalThickness(F,rw,rh,loc);
-          _lap('local');
-          const zc=zonesOf(thinC,true);
-          critZones+=zc.nb; critVol+=zc.area*step; critLayers++;
-          if(zc.minT<critMin) critMin=zc.minT;
+          if(screen){ critZones+=pre.nb; critVol+=pre.area*step; critLayers++; }
+          else{
+            slLocalThickness(F,rw,rh,loc);
+            _lap('local');
+            const zc=zonesOf(thinC,true);
+            critZones+=zc.nb; critVol+=zc.area*step; critLayers++;
+            if(zc.minT<critMin) critMin=zc.minT;
+          }
         }
       }
       if(nW) warnVol+=zonesOf(thinW,false).area*step;
@@ -2643,6 +2663,11 @@ async function slAnalyzeThickness(tris,cfg,onProgress){
           minRobust:isFinite(critMin)?critMin:null,
           critZones, critVol, critLayers, warnVol, vol:totVol, minZone:MINZONE,
           supArea, supVol, supLayers, supIslands, supMaxIsland, supAngle:OVER, prof:PROF,
+          screen, minSpan:isFinite(minSpan)?minSpan:null,
+          // Le dépistage n'est concluant que s'il ne trouve RIEN : ni zone sous
+          // le double du seuil, ni corde plus fine que 1,5× le seuil (ce second
+          // test rattrape une paroi trop fine pour survivre au raster grossier).
+          needsFine: screen && (critLayers>0 || minSpan<cfg.seuil*1.5),
           minZ:isFinite(minZrun)?minZrun:null,
           // Une plaque n'est mesurée qu'au pas de coupe près : on alerte dès que
           // la barre d'incertitude croise le seuil, pas seulement la valeur
@@ -2716,8 +2741,18 @@ $('th-go').onclick=async()=>{
   res.innerHTML='Analyse des épaisseurs en cours…';
   const t0=performance.now();
   try{
-    TH=await slAnalyzeThickness(SCALED,{bed:pr.bed,seuil:thSeuil()},
-      p=>{ bar.firstElementChild.style.width=(p*100).toFixed(0)+'%'; });
+    // Deux passes : un dépistage grossier, puis l'analyse fine SEULEMENT si le
+    // dépistage a trouvé de quoi douter. Sur une pièce saine — le cas courant —
+    // la seconde passe n'a jamais lieu.
+    const seuil=thSeuil();
+    const scr=await slAnalyzeThickness(SCALED,{bed:pr.bed,seuil,screen:true,px:Math.max(0.12,seuil/2)},
+      p=>{ bar.firstElementChild.style.width=(p*55).toFixed(0)+'%'; });
+    TH=scr;
+    if(scr.needsFine){
+      res.innerHTML='Zone suspecte repérée — analyse fine en cours…';
+      TH=await slAnalyzeThickness(SCALED,{bed:pr.bed,seuil},
+        p=>{ bar.firstElementChild.style.width=(55+p*45).toFixed(0)+'%'; });
+    }
     THMIN=TH.minRobust;
     const s=TH.seuil, pc=v=>TH.vol>0?(v/TH.vol*100):0;
     const dt=((performance.now()-t0)/1000).toFixed(1);
@@ -2726,7 +2761,9 @@ $('th-go').onclick=async()=>{
         ? `<b style="color:var(--red)">Parois sous le seuil de ${s.toFixed(2)} mm</b> — minimum mesuré <b>${THMIN.toFixed(2)} mm</b><br>`+
           `Présentes sur <b>${TH.critLayers} coupes / ${TH.nL}</b> · volume concerné <b>${TH.critVol.toFixed(0)} mm³</b> (${pc(TH.critVol).toFixed(1)} % de la pièce)<br>`
         : `<b style="color:var(--green)">Aucune paroi sous le seuil de ${s.toFixed(2)} mm</b> <span style="color:var(--dim2)">(${pr.fdm?'diamètre de buse':'paroi résine usuelle'})</span><br>`)+
-      `Matière fragile, entre 1 et 2 × le seuil : <b>${pc(Math.max(0,TH.warnVol-TH.critVol)).toFixed(1)} %</b><br>`+
+      (TH.screen
+        ? `<span style="color:var(--dim2)">Conclu par dépistage : aucune matière ne descend sous le double du seuil, donc aucune sous le seuil. La part de matière « fragile » n'a pas été chiffrée, elle n'aurait rien changé au verdict.</span><br>`
+        : `Matière fragile, entre 1 et 2 × le seuil : <b>${pc(Math.max(0,TH.warnVol-TH.critVol)).toFixed(1)} %</b><br>`)+
       (TH.minZ!=null?`Plaque horizontale la plus mince : <b style="color:${TH.zThin?'var(--red)':'var(--txt)'}">${TH.minZ.toFixed(2)} mm</b> <span style="color:var(--dim2)">± ${(TH.step/2).toFixed(2)}</span><br>`:'')+
       (TH.supArea>0
         ? `<b style="color:var(--amber)">Supports nécessaires : ${(TH.supArea/100).toFixed(1)} cm² en l'air</b> sur ${TH.supLayers} coupe${TH.supLayers>1?'s':''} · `+
