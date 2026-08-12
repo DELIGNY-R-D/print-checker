@@ -118,6 +118,14 @@ input[type=text].gtxt{width:100%;background:#141416;color:var(--txt);border:.5px
 #gverdict{margin-left:10px;vertical-align:middle;font-size:12px;}
 #s-elec{margin-top:10px;font-size:12.5px;color:var(--dim2);}
 
+/* Devis */
+.sechead .g5{background:linear-gradient(90deg,#30d158,#ffd60a 80%);-webkit-background-clip:text;background-clip:text;color:transparent;}
+.dvline{display:flex;justify-content:space-between;gap:12px;padding:5px 0;font-family:var(--mono);font-size:13px;}
+.dvline.tot{border-top:1px solid var(--sep);margin-top:6px;padding-top:9px;font-weight:700;}
+.dvline.prix{border-top:2px solid var(--green);margin-top:8px;padding-top:10px;font-size:17px;font-weight:700;color:var(--green);}
+.dvline .k{color:var(--dim);} .dvline.tot .k,.dvline.prix .k{color:var(--txt);}
+.dvsrc{margin-top:10px;font-size:12px;color:var(--dim2);line-height:1.5;}
+
 /* Carte d'épaisseurs */
 .thbox{margin-top:16px;padding-top:14px;border-top:.5px solid var(--sep);}
 #th-canvas{width:100%;height:240px;border-radius:14px;background:radial-gradient(120% 120% at 50% 0%,#141416,#000);display:block;margin-top:12px;}
@@ -137,6 +145,7 @@ textarea.slcode{width:100%;height:118px;background:#141416;color:var(--txt);bord
 #matpreview{margin-top:14px;background:#fff;border-radius:14px;padding:10px;}
 #matpreview svg{width:100%;height:auto;display:block;}
 #scalemat{display:none;}
+#devis{display:none;}
 
 footer{text-align:center;color:var(--dim2);font-size:12px;margin-top:34px;line-height:1.7;}
 footer .disc{max-width:640px;margin:0 auto 10px;}
@@ -163,8 +172,22 @@ footer .disc{max-width:640px;margin:0 auto 10px;}
   .r-actions{margin-top:10px;}
   .r-actions .box{padding:5px 0;font-size:13px;}
   .r-foot{margin-top:20px;font-size:10px;text-align:center;color:#333;}
+  /* Impression du devis : remplace le rapport */
+  body.print-devis #report{display:none;}
+  body.print-devis #devis, body.print-devis #devis *{visibility:visible;}
+  body.print-devis #devis{display:block;position:absolute;top:0;left:0;width:100%;color:#000;background:#fff;font-family:var(--mono);}
+  .d-head{text-align:center;border-bottom:3px solid #000;padding-bottom:10px;margin-bottom:14px;}
+  .d-head h1{font-size:20px;margin:0 0 4px;letter-spacing:0;}
+  .d-meta{display:grid;grid-template-columns:1fr 1fr;gap:4px 20px;font-size:12px;margin-bottom:18px;padding-bottom:12px;border-bottom:1px solid #000;}
+  .d-l{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px dotted #999;font-size:13px;}
+  .d-l.d-tot{border-bottom:none;border-top:2px solid #000;margin-top:6px;padding-top:9px;font-weight:700;}
+  .d-prix{margin-top:14px;padding:10px;border:2px solid #000;text-align:center;font-size:17px;font-weight:700;}
+  .d-note{margin-top:14px;font-size:10.5px;line-height:1.5;}
+  .d-sign{margin-top:26px;font-size:11px;}
+  .d-sign .d-box{margin-top:6px;border:1px solid #000;height:70px;}
+
   /* Impression de la planche photogrammétrie : remplace le rapport */
-  body.print-mat #report{display:none;}
+  body.print-mat #report, body.print-mat #devis{display:none;}
   body.print-mat #scalemat, body.print-mat #scalemat *{visibility:visible;}
   body.print-mat #scalemat{display:block;position:absolute;top:0;left:0;background:#fff;}
 }
@@ -318,6 +341,37 @@ footer .disc{max-width:640px;margin:0 auto 10px;}
     </div>
   </div>
 
+  <!-- ── DEVIS D'ATELIER ───────────────────────────────────────────────── -->
+  <h2 class="sechead"><span class="g5">Devis d'atelier</span></h2>
+  <div class="secsub">Ce que la pièce te coûte vraiment, et à quel prix l'annoncer. Matière, électricité, temps machine, main-d'œuvre, taux d'échec et marge — <b>rien n'est envoyé, le devis se calcule et s'imprime chez toi</b>. C'est une donnée économique, pas une garantie de fabrication.</div>
+
+  <div class="grid">
+    <div class="card" style="grid-column:1/-1">
+      <h2>6 · Prix de revient et prix conseillé</h2>
+      <div class="grid" style="margin-top:0;gap:20px">
+        <div>
+          <div class="slgrid">
+            <div class="fld"><label>Quantité</label><input type="number" id="dv-qty" min="1" max="9999" value="1"></div>
+            <div class="fld"><label>Taux horaire machine (€/h)</label><input type="number" id="dv-mach" min="0" step="0.5" value="8"></div>
+            <div class="fld"><label>Taux horaire opérateur (€/h)</label><input type="number" id="dv-op" min="0" step="1" value="35"></div>
+            <div class="fld"><label>Taux d'échec (%)</label><input type="number" id="dv-fail" min="0" max="100" step="1" value="8"></div>
+            <div class="fld"><label>Préparation (min, par lot)</label><input type="number" id="dv-prep" min="0" step="1" value="10"></div>
+            <div class="fld"><label>Post-traitement (min, par pièce)</label><input type="number" id="dv-post" min="0" step="1" value="15"></div>
+            <div class="fld" style="grid-column:1/-1"><label>Marge <span class="infl" id="dv-margev">45 %</span> — <b>sur le prix de vente</b>, convention commerciale : prix = coût ÷ (1 − marge)</label>
+              <input type="range" id="dv-marge" min="0" max="80" step="5" value="45"></div>
+          </div>
+          <div class="gnote">💡 Le <b>taux horaire machine</b> couvre l'amortissement, l'usure de la buse et la maintenance — pas l'électricité, déjà comptée à part. Le <b>taux d'échec</b> répartit sur chaque pièce vendue le coût de celles qui ratent : à 8 %, une impression sur douze est refaite gratuitement.</div>
+        </div>
+        <div>
+          <div class="gplan" id="dv-out" style="margin-top:0">Charge un modèle — et si possible tranche-le, le devis sera calculé sur le temps réel plutôt que sur l'estimation rapide.</div>
+          <div class="export-row" style="text-align:left">
+            <button class="btn export" id="dv-pdf" disabled>📄 Exporter le devis (PDF)</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- ── BOÎTE À OUTILS G-CODE ─────────────────────────────────────────── -->
   <h2 class="sechead"><span class="g">Boîte à outils G-code</span></h2>
   <div class="secsub">Visualise tes trajectoires en <b>3D</b> (colorées par type : parois, remplissage, supports…), passe ton G-code au <b>contrôle de sécurité prévol</b> (hors plateau, extrusion à froid, chauffages, firmware), puis modifie-le : <b>pause</b>, <b>changement de filament</b>, <b>température ou ventilation par plage de couches</b>. 100 % local, ton G-code ne quitte pas le navigateur.</div>
@@ -325,7 +379,7 @@ footer .disc{max-width:640px;margin:0 auto 10px;}
   <div class="grid">
     <!-- LEFT : gcode upload + stats + layer preview -->
     <div class="card">
-      <h2>6 · Ton G-code</h2>
+      <h2>7 · Ton G-code</h2>
       <div id="gdrop">
         <div class="big">⚙️</div>
         <div class="t">Dépose un fichier G-code ici</div>
@@ -373,7 +427,7 @@ footer .disc{max-width:640px;margin:0 auto 10px;}
 
     <!-- RIGHT : pause insertion -->
     <div class="card">
-      <h2>7 · Modifier : pause, filament, températures</h2>
+      <h2>8 · Modifier : pause, filament, températures</h2>
       <div class="ctrls" style="margin-top:0">
         <div class="fld" style="grid-column:1/-1"><label>Firmware de la machine — <b>obligatoire</b> avant modification (les commandes valides en dépendent)</label>
           <select id="gfw">
@@ -416,7 +470,7 @@ footer .disc{max-width:640px;margin:0 auto 10px;}
 
     <!-- FULL WIDTH : safety preflight -->
     <div class="card" style="grid-column:1/-1">
-      <h2>8 · Contrôle de sécurité prévol <span class="badge" id="gverdict" style="display:none"></span></h2>
+      <h2>9 · Contrôle de sécurité prévol <span class="badge" id="gverdict" style="display:none"></span></h2>
       <div id="gsafety"><div class="empty">Charge un G-code pour lancer le contrôle prévol (hors plateau, homing, extrusion à froid, chauffages, modes G90/G91, compatibilité firmware).</div></div>
     </div>
   </div>
@@ -428,7 +482,7 @@ footer .disc{max-width:640px;margin:0 auto 10px;}
   <div class="grid">
     <!-- LEFT : capture guide -->
     <div class="card">
-      <h2>9 · Bien capturer ton objet (photos ou vidéo)</h2>
+      <h2>10 · Bien capturer ton objet (photos ou vidéo)</h2>
       <div class="risk"><div class="ic">📷</div><div class="body"><b>30 à 60 photos qui se chevauchent (60–80 %)</b><div class="d">Fais le tour complet à 3 hauteurs (vue basse, à niveau, plongée), une photo tous les 10–15°. Chaque détail doit apparaître sur au moins 3 photos.</div></div></div>
       <div class="risk"><div class="ic">💡</div><div class="body"><b>Lumière douce et constante</b><div class="d">Ciel voilé, lightbox ou pièce bien éclairée. Jamais de flash, pas d'ombres dures, et verrouille l'exposition : la luminosité ne doit pas changer pendant le tour.</div></div></div>
       <div class="risk"><div class="ic">🎯</div><div class="body"><b>Netteté avant tout</b><div class="d">Focale fixe (pas de zoom en cours de route), ISO bas, f/8–f/11 si réglable, appareil stable. Une photo floue est pire qu'une photo manquante — supprime-les.</div></div></div>
@@ -441,7 +495,7 @@ footer .disc{max-width:640px;margin:0 auto 10px;}
 
     <!-- RIGHT : printable scale mat -->
     <div class="card">
-      <h2>10 · Planche d'échelle à imprimer (A4)</h2>
+      <h2>11 · Planche d'échelle à imprimer (A4)</h2>
       <div class="gnote" style="margin-top:0">
         ① <b>Imprime à 100 %</b> (« taille réelle » — jamais « ajuster à la page »), A4 portrait.<br>
         ② <b>Vérifie l'impression</b> : la barre doit mesurer <b>100,0 mm</b> au réglet, OU pose une carte bancaire sur le cadre en bas — elle doit le couvrir exactement. Si écart : corrige l'échelle d'impression avant usage.<br>
@@ -486,6 +540,29 @@ footer .disc{max-width:640px;margin:0 auto 10px;}
     <div id="r-actionlist"></div>
   </div>
   <div class="r-foot">Estimations indicatives (carte 2, hors tranchage) · Généré localement, aucune donnée envoyée · Un outil DELIGNY R&D</div>
+</div>
+
+<!-- Devis imprimable — rempli par buildDevis(), visible seulement à l'impression (body.print-devis) -->
+<div id="devis">
+  <div class="d-head">
+    <h1>DEVIS DE FABRICATION</h1>
+    <div style="font-size:11px">Impression 3D — établi localement avec 3D Print Checker</div>
+  </div>
+  <div class="d-meta">
+    <div><b>Projet :</b> <span id="d-projet"></span></div>
+    <div><b>Date :</b> <span id="d-date"></span></div>
+    <div><b>Machine :</b> <span id="d-machine"></span></div>
+    <div><b>Matière :</b> <span id="d-matiere"></span></div>
+    <div><b>Quantité :</b> <span id="d-qte"></span></div>
+    <div><b>Pièce :</b> <span id="d-piece"></span></div>
+  </div>
+  <div id="d-lignes"></div>
+  <div class="d-prix" id="d-prix"></div>
+  <div class="d-note" id="d-note"></div>
+  <div class="d-sign">
+    <div>Bon pour accord — date et signature du client</div>
+    <div class="d-box"></div>
+  </div>
 </div>
 
 <!-- Planche photogrammétrie imprimable — remplie par scaleMatSVG(), visible seulement à l'impression (body.print-mat) -->
@@ -940,6 +1017,7 @@ function update(){
   const exp=$('export'); exp.disabled=false; exp.classList.add('ready');
   slSync();   // la trancheuse dépend du modèle courant (cotes, volume, surplombs) : un
               // nouveau fichier doit rafraîchir ses garde-fous, pas seulement les réglages
+  dvRender();
 }
 
 // ── Rapport imprimable (atelier — utile, pas joli) ──────────────────────────
@@ -1227,7 +1305,7 @@ function gSafety(){
     if(fw){ const bad=pl.filter(([k])=>!fw.pause.includes(k));
       if(bad.length) rows.push(['⚠️','warn',`Pauses incompatibles avec ${fw.name}`,bad.map(([k])=>GMODE_LABEL(k)).join(', ')+' — ces commandes seraient ignorées ou mal gérées par ce firmware.']); }
   }
-  if(!fw) rows.push(['⚠️','warn','Firmware non renseigné','La compatibilité des commandes n\'est pas vérifiée — sélectionne le firmware dans le panneau 7.']);
+  if(!fw) rows.push(['⚠️','warn','Firmware non renseigné','La compatibilité des commandes n\'est pas vérifiée — sélectionne le firmware dans le panneau 8.']);
   const verdict=rows.some(r=>r[0]==='🚫')?['🔴','À CORRIGER']:rows.some(r=>r[1]==='warn')?['🟠','À VÉRIFIER']:['🟢','PRÊT À IMPRIMER'];
   return {rows, verdict};
 }
@@ -2248,7 +2326,7 @@ async function slSlice(tris,cfg,onProgress){
 }
 
 // ── UI de la trancheuse ─────────────────────────────────────────────────────
-let SLGCODE=null, SLNAME='piece', slDirty={start:false,end:false};
+let SLGCODE=null, SLNAME='piece', SLRES=null, slDirty={start:false,end:false};
 const slNum=(id,dflt)=>{ const v=parseFloat($(id).value); return isFinite(v)?v:dflt; };
 function slCfg(){
   const pr=PRINTERS[$('printer').value]||PRINTERS.bambu_a1;
@@ -2320,7 +2398,8 @@ $('sl-go').onclick=async()=>{
   try{
     const r=await slSlice(SCALED,c,p=>{ bar.firstElementChild.style.width=(p*100).toFixed(0)+'%'; });
     const gc=r.gcode;
-    SLGCODE=gc; SLNAME=(curFileName||'piece').replace(/[^\w\-]+/g,'_');
+    SLGCODE=gc; SLRES=r; SLNAME=(curFileName||'piece').replace(/[^\w\-]+/g,'_');
+    dvRender();   // le devis bascule du temps estimé au temps réellement tranché
     bar.firstElementChild.style.width='100%';
     const est=estimate(G,$('printer').value,$('material').value,+$('infill').value,+$('wall').value);
     const dt=((performance.now()-t0)/1000).toFixed(1);
@@ -2348,6 +2427,94 @@ $('sl-dl').onclick=()=>{
   a.download=SLNAME+'.gcode';
   a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),5000);
 };
+
+// ══ DEVIS D'ATELIER ═════════════════════════════════════════════════════════
+// Prix de revient complet puis prix conseillé. Deux points de méthode qui
+// changent tout et que l'affichage doit dire :
+//  · la MARGE est prise sur le PRIX DE VENTE (prix = coût ÷ (1 − marge)), la
+//    convention commerciale — et non un coefficient appliqué au coût, qui
+//    donnerait ici 41,57 € au lieu de 52,13 € pour la même marge annoncée ;
+//  · le TAUX D'ÉCHEC porte sur le sous-total, car une pièce ratée a consommé
+//    sa matière ET son temps machine ET sa préparation.
+// La préparation est facturée par LOT (on règle la machine une fois), le
+// post-traitement par PIÈCE (chacune se ponce). D'où l'effet de quantité.
+let DEVIS=null;
+function dvCompute(){
+  if(!G) return null;
+  const pr=PRINTERS[$('printer').value]||PRINTERS.bambu_a1;
+  const mat=MATERIALS[$('material').value]||MATERIALS.PLA;
+  const est=estimate(G,$('printer').value,$('material').value,+$('infill').value,+$('wall').value);
+  // Source : le tranchage réel s'il existe, sinon l'estimation rapide — et on
+  // le dit, parce que le prix annoncé au client en dépend directement.
+  const sliced=SLRES&&SLRES.weightG>0;
+  const src=sliced?'tranchage réel':'estimation rapide (carte 2)';
+  const weightG=sliced?SLRES.weightG:est.weightG;
+  const timeH=sliced?SLRES.timeS/3600:est.timeMin/60;
+  const qty=Math.max(1,Math.round(dvNum('dv-qty',1)));
+  const tMach=dvNum('dv-mach',8), tOp=dvNum('dv-op',35);
+  const prep=dvNum('dv-prep',10)/60, post=dvNum('dv-post',15)/60;
+  const fail=dvNum('dv-fail',8)/100, marge=Math.min(0.95,dvNum('dv-marge',45)/100);
+  const l={};
+  l.matiere = weightG/1000*mat.priceKg*qty;
+  l.elec    = (pr.watts||100)*timeH*qty/1000*ELEC_EUR_KWH;
+  l.machine = timeH*qty*tMach;
+  l.prepa   = prep*tOp;                       // une fois pour le lot
+  l.post    = post*tOp*qty;                   // chaque pièce
+  const sous = l.matiere+l.elec+l.machine+l.prepa+l.post;
+  l.risque = sous*fail;
+  const cout = sous+l.risque;
+  const prix = cout/(1-marge);
+  return {l, sous, cout, prix, qty, marge, fail, timeH, weightG, src, sliced,
+          unit:prix/qty, coutUnit:cout/qty, mat, pr};
+}
+const dvNum=(id,d)=>{ const v=parseFloat($(id).value); return isFinite(v)?v:d; };
+const dvEur=v=>v.toFixed(2).replace('.',',')+' €';
+function dvRender(){
+  $('dv-margev').textContent=$('dv-marge').value+' %';
+  const d=dvCompute(), out=$('dv-out'), btn=$('dv-pdf');
+  if(!d){ out.textContent='Charge un modèle — et si possible tranche-le, le devis sera calculé sur le temps réel plutôt que sur l\'estimation rapide.';
+          btn.disabled=true; btn.classList.add('export'); DEVIS=null; return; }
+  DEVIS=d;
+  const row=(k,v,c='')=>`<div class="dvline ${c}"><span class="k">${k}</span><span>${dvEur(v)}</span></div>`;
+  out.innerHTML=
+    row('Matière',d.l.matiere)+
+    row('Électricité',d.l.elec)+
+    row('Temps machine',d.l.machine)+
+    row('Préparation',d.l.prepa)+
+    row('Post-traitement',d.l.post)+
+    row(`Risque d'échec ${(d.fail*100).toFixed(0)} %`,d.l.risque)+
+    row('Coût complet',d.cout,'tot')+
+    row(`PRIX CONSEILLÉ HT${d.qty>1?` (${d.qty} pièces)`:''}`,d.prix,'prix')+
+    (d.qty>1?`<div class="dvline"><span class="k">soit à l'unité</span><span>${dvEur(d.unit)}</span></div>`:'')+
+    `<div class="dvsrc">Marge de ${(d.marge*100).toFixed(0)} % prise sur le prix de vente · `+
+    `${d.weightG.toFixed(0)} g et ${d.timeH.toFixed(2)} h par pièce, d'après <b>${d.src}</b>`+
+    (d.sliced?'':' — tranche le modèle en carte 4-5 pour un prix fondé sur le temps réel')+
+    `. Prix hors taxes. Ce devis est une donnée économique : il ne garantit pas la fabrication.</div>`;
+  btn.disabled=false; btn.classList.remove('export');
+}
+['dv-qty','dv-mach','dv-op','dv-fail','dv-prep','dv-post','dv-marge'].forEach(id=>$(id).addEventListener('input',dvRender));
+function buildDevis(){
+  if(!DEVIS) return;
+  const d=DEVIS;
+  $('d-projet').textContent=curFileName;
+  $('d-date').textContent=new Date().toLocaleDateString('fr-FR');
+  $('d-machine').textContent=d.pr.name;
+  $('d-matiere').textContent=d.mat.label;
+  $('d-qte').textContent=d.qty;
+  $('d-piece').textContent=`${G.size.map(x=>Math.round(x)).join('×')} mm · ${d.weightG.toFixed(0)} g · ${d.timeH.toFixed(2)} h`;
+  $('d-lignes').innerHTML=[
+    ['Matière',d.l.matiere],['Électricité',d.l.elec],['Temps machine',d.l.machine],
+    ['Préparation',d.l.prepa],['Post-traitement',d.l.post],
+    [`Risque d'échec ${(d.fail*100).toFixed(0)} %`,d.l.risque],
+  ].map(([k,v])=>`<div class="d-l"><span>${k}</span><span>${dvEur(v)}</span></div>`).join('')+
+    `<div class="d-l d-tot"><span>Coût de revient complet</span><span>${dvEur(d.cout)}</span></div>`;
+  $('d-prix').innerHTML=`PRIX CONSEILLÉ HT : ${dvEur(d.prix)}`+
+    (d.qty>1?`<div style="font-size:12px;font-weight:400">soit ${dvEur(d.unit)} l'unité</div>`:'');
+  $('d-note').textContent=`Marge de ${(d.marge*100).toFixed(0)} % prise sur le prix de vente. `+
+    `Quantités et temps issus de : ${d.src}. Prix hors taxes, hors expédition. `+
+    `Document technique et économique produit localement — il ne constitue ni une garantie de fabrication ni un engagement contractuel.`;
+}
+$('dv-pdf').onclick=()=>{ if(!DEVIS) return; buildDevis(); document.body.classList.add('print-devis'); window.print(); };
 
 // ══ CARTE D'ÉPAISSEURS (analyse DFM réelle, pas la boîte englobante) ════════
 // Le contrôle "détail fin" de la carte 3 ne regardait que la plus petite
@@ -2846,7 +3013,7 @@ const MATSVG=scaleMatSVG();
 $('matpreview').innerHTML=MATSVG;
 $('scalemat').innerHTML=MATSVG;
 $('printmat').onclick=()=>{ document.body.classList.add('print-mat'); window.print(); };
-addEventListener('afterprint',()=>document.body.classList.remove('print-mat'));
+addEventListener('afterprint',()=>document.body.classList.remove('print-mat','print-devis'));
 
 // petite API de debug/power-users (console) — volontairement exposée
 window.PrintChecker={gParse,gPauseBlock,gApply,gEdits,gSafety,
@@ -2860,5 +3027,6 @@ sizeView(); frame();
 run(demoTris());          // charge la démo au démarrage
 gDraw(1);                 // placeholder de l'aperçu G-code
 slSync();                 // réglages dérivés + scripts start/end de la trancheuse
+dvRender();               // devis initial sur la démo
 </script>
 </body></html>
