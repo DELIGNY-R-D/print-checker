@@ -118,6 +118,10 @@ input[type=text].gtxt{width:100%;background:#141416;color:var(--txt);border:.5px
 #gverdict{margin-left:10px;vertical-align:middle;font-size:12px;}
 #s-elec{margin-top:10px;font-size:12.5px;color:var(--dim2);}
 
+/* Profils d'atelier */
+.wpbox{background:var(--card2);border-radius:14px;padding:14px;margin-top:4px;}
+.wpbox input[type=text].gtxt{font:14px var(--font);}
+
 /* Devis */
 .sechead .g5{background:linear-gradient(90deg,#30d158,#ffd60a 80%);-webkit-background-clip:text;background-clip:text;color:transparent;}
 .dvline{display:flex;justify-content:space-between;gap:12px;padding:5px 0;font-family:var(--mono);font-size:13px;}
@@ -218,6 +222,37 @@ footer .disc{max-width:640px;margin:0 auto 10px;}
       <div class="ctrls">
         <div class="fld"><label>Imprimante</label>
           <select id="printer"></select></div>
+        <div class="fld"><label>Profil d'atelier <span class="infl" id="wp-hint"></span></label>
+          <div class="row-btn" style="margin-top:0;justify-content:flex-start;gap:6px">
+            <button class="btn" id="wp-new" style="padding:8px 12px;font-size:12px">＋ Nouveau</button>
+            <button class="btn" id="wp-edit" style="padding:8px 12px;font-size:12px">Modifier</button>
+            <button class="btn" id="wp-del" style="padding:8px 12px;font-size:12px">Supprimer</button>
+          </div></div>
+        <div class="fld" id="wp-editor" style="grid-column:1/-1;display:none">
+          <div class="wpbox">
+            <div class="slgrid">
+              <div class="fld" style="grid-column:1/-1"><label>Nom de la machine</label><input type="text" class="gtxt" id="wp-name" placeholder="Ender-3 atelier"></div>
+              <div class="fld"><label>Procédé</label><select id="wp-proc"><option value="fdm">FDM (filament)</option><option value="resin">Résine (SLA/DLP)</option></select></div>
+              <div class="fld"><label>Firmware</label><select id="wp-fw"><option value="">— non renseigné —</option><option value="marlin_ap">Marlin + ADVANCED_PAUSE</option><option value="marlin">Marlin générique</option><option value="prusa">Prusa</option><option value="bambu">Bambu Lab</option><option value="klipper">Klipper</option><option value="reprap">RepRapFirmware</option></select></div>
+              <div class="fld"><label>Volume X (mm)</label><input type="number" id="wp-bx" min="10" value="220"></div>
+              <div class="fld"><label>Volume Y (mm)</label><input type="number" id="wp-by" min="10" value="220"></div>
+              <div class="fld"><label>Volume Z (mm)</label><input type="number" id="wp-bz" min="10" value="250"></div>
+              <div class="fld"><label>Buses disponibles (mm)</label><input type="text" class="gtxt" id="wp-noz" placeholder="0.4, 0.6"></div>
+              <div class="fld"><label>Débit max (mm³/s)</label><input type="number" id="wp-flow" min="1" value="12"></div>
+              <div class="fld"><label>Puissance (W)</label><input type="number" id="wp-watts" min="1" value="120"></div>
+              <div class="fld"><label>Coût horaire machine (€/h)</label><input type="number" id="wp-rate" min="0" step="0.5" value="6"></div>
+              <div class="fld"><label>Maintenance (€/h)</label><input type="number" id="wp-maint" min="0" step="0.5" value="2"></div>
+              <div class="fld"><label>Taux d'échec constaté (%)</label><input type="number" id="wp-fail" min="0" max="100" value="8"></div>
+              <div class="fld"><label>Préparation (min/lot)</label><input type="number" id="wp-prep" min="0" value="10"></div>
+              <div class="fld"><label>Post-traitement (min/pièce)</label><input type="number" id="wp-post" min="0" value="15"></div>
+            </div>
+            <div class="gnote">Ces valeurs alimentent directement le <b>devis</b> (carte 6), les <b>contrôles de volume et de débit</b> (carte 9) et la <b>trancheuse</b>. Elles restent dans ce navigateur — aucun compte, rien n'est envoyé.</div>
+            <div class="row-btn" style="justify-content:flex-start">
+              <button class="btn pri" id="wp-save">Enregistrer le profil</button>
+              <button class="btn" id="wp-cancel">Annuler</button>
+            </div>
+          </div>
+        </div>
         <div class="fld"><label>Matériau</label>
           <select id="material"></select></div>
         <div class="fld"><label>Remplissage <span class="infl" id="inflv">20 %</span></label>
@@ -632,11 +667,41 @@ const UNIT_FACTORS = { mm:1, cm:10, m:1000, in:25.4 }; // → mm
 // OBJ/DAE n'ont pas d'unité normée — mm par défaut, à corriger via le sélecteur si besoin.
 const DEFAULT_UNIT = { stl:'mm', '3mf':'mm', amf:'mm', ply:'mm', off:'mm', obj:'mm', dae:'m', fbx:'cm', gltf:'m', glb:'m' };
 
-// ── Remplir les selects (par groupe) ────────────────────────────────────────
+// ── Profils d'atelier ───────────────────────────────────────────────────────
+// Choix d'architecture : les profils utilisateur sont enregistrés DANS le même
+// dictionnaire PRINTERS que les machines intégrées. Tout le code en aval —
+// estimation, trancheuse, contrôle prévol, devis — les lit alors sans une
+// seule ligne de changement, au lieu d'un second chemin à maintenir en
+// parallèle. Ils portent en plus l'économie de l'atelier (coût horaire,
+// maintenance, taux d'échec, temps opérateur), ignorée par le reste du code.
+// localStorage plutôt qu'IndexedDB : quelques profils de quelques centaines
+// d'octets, lus au démarrage — une base transactionnelle asynchrone n'apporte
+// rien ici et compliquerait le chargement synchrone.
 const $=id=>document.getElementById(id);
-$('printer').innerHTML = PRINTER_GROUPS.map(g=>`<optgroup label="${g.label}">${
-  Object.entries(g.items).map(([k,v])=>`<option value="${k}">${v.name} · ${v.bed.join('×')}</option>`).join('')
-}</optgroup>`).join('');
+const WP_KEY='printchecker.ateliers.v1';
+let WPROFILES={};
+function wpLoad(){
+  try{ WPROFILES=JSON.parse(localStorage.getItem(WP_KEY)||'{}')||{}; }
+  catch(e){ console.warn('profils illisibles, ignorés',e); WPROFILES={}; }
+  for(const [k,p] of Object.entries(WPROFILES)) PRINTERS[k]=p;
+}
+function wpSave(){
+  try{ localStorage.setItem(WP_KEY,JSON.stringify(WPROFILES)); return true; }
+  catch(e){ alert("Impossible d'enregistrer le profil (stockage du navigateur indisponible ou plein)."); return false; }
+}
+function renderPrinterSelect(sel){
+  const keep=sel||$('printer').value;
+  const groups=PRINTER_GROUPS.map(g=>`<optgroup label="${g.label}">${
+    Object.entries(g.items).map(([k,v])=>`<option value="${k}">${v.name} · ${v.bed.join('×')}</option>`).join('')
+  }</optgroup>`).join('');
+  const mine=Object.entries(WPROFILES);
+  const own=mine.length?`<optgroup label="Mes machines d'atelier">${
+    mine.map(([k,v])=>`<option value="${k}">${v.name} · ${v.bed.join('×')}</option>`).join('')}</optgroup>`:'';
+  $('printer').innerHTML=own+groups;
+  if(keep&&$('printer').querySelector(`option[value="${keep}"]`)) $('printer').value=keep;
+}
+wpLoad();
+renderPrinterSelect();
 $('material').innerHTML = MATERIAL_GROUPS.map(g=>`<optgroup label="${g.label}">${
   Object.entries(g.items).map(([k,v])=>`<option value="${k}"${k==='PLA'?' selected':''}>${v.label}</option>`).join('')
 }</optgroup>`).join('');
@@ -2428,6 +2493,98 @@ $('sl-dl').onclick=()=>{
   a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),5000);
 };
 
+// ══ ÉDITEUR DE PROFILS D'ATELIER ════════════════════════════════════════════
+let wpEditing=null;                       // clé en cours d'édition, null = création
+const wpIsMine=k=>Object.prototype.hasOwnProperty.call(WPROFILES,k);
+function wpFill(p){
+  $('wp-name').value=p?p.name:'';
+  $('wp-proc').value=p?(p.fdm?'fdm':'resin'):'fdm';
+  $('wp-fw').value=p&&p.firmware?p.firmware:'';
+  $('wp-bx').value=p?p.bed[0]:220; $('wp-by').value=p?p.bed[1]:220; $('wp-bz').value=p?p.bed[2]:250;
+  $('wp-noz').value=p&&p.nozzles?p.nozzles.join(', '):'0.4';
+  $('wp-flow').value=p&&p.flow?p.flow:12;
+  $('wp-watts').value=p&&p.watts?p.watts:120;
+  $('wp-rate').value=p&&p.rate!=null?p.rate:6;
+  $('wp-maint').value=p&&p.maint!=null?p.maint:2;
+  $('wp-fail').value=p&&p.fail!=null?p.fail:8;
+  $('wp-prep').value=p&&p.prep!=null?p.prep:10;
+  $('wp-post').value=p&&p.post!=null?p.post:15;
+}
+function wpOpen(key){
+  wpEditing=key||null;
+  wpFill(key?WPROFILES[key]:null);
+  $('wp-editor').style.display='block';
+  $('wp-name').focus();
+}
+function wpClose(){ $('wp-editor').style.display='none'; wpEditing=null; }
+function wpSync(){
+  const k=$('printer').value, mine=wpIsMine(k);
+  $('wp-edit').disabled=!mine; $('wp-del').disabled=!mine;
+  $('wp-edit').classList.toggle('export',!mine); $('wp-del').classList.toggle('export',!mine);
+  $('wp-hint').textContent=mine?'machine de ton atelier'
+    :(Object.keys(WPROFILES).length?'machine intégrée — sélectionne une des tiennes pour t\'en servir'
+                                   :'aucun profil enregistré sur ce navigateur');
+}
+$('wp-new').onclick=()=>wpOpen(null);
+$('wp-edit').onclick=()=>{ if(wpIsMine($('printer').value)) wpOpen($('printer').value); };
+$('wp-cancel').onclick=wpClose;
+$('wp-del').onclick=()=>{
+  const k=$('printer').value;
+  if(!wpIsMine(k)) return;
+  if(!confirm(`Supprimer définitivement le profil « ${WPROFILES[k].name} » de ce navigateur ?`)) return;
+  delete WPROFILES[k]; delete PRINTERS[k];
+  wpSave(); renderPrinterSelect('bambu_a1'); wpClose(); wpSync();
+  update(); slSync(); dvRender(); gRenderSafety();
+};
+$('wp-save').onclick=()=>{
+  const name=$('wp-name').value.trim();
+  if(!name){ alert('Donne un nom à la machine.'); return; }
+  const bed=[+$('wp-bx').value,+$('wp-by').value,+$('wp-bz').value];
+  if(bed.some(v=>!(v>0))){ alert('Volume invalide.'); return; }
+  const noz=$('wp-noz').value.split(/[,;\s]+/).map(parseFloat)
+              .filter(v=>isFinite(v)&&v>0.05&&v<2).sort((a,b)=>a-b);
+  const fdm=$('wp-proc').value==='fdm';
+  if(fdm&&!noz.length){ alert('Indique au moins un diamètre de buse (ex : 0.4).'); return; }
+  const key=wpEditing||('w_'+Date.now().toString(36));
+  const p={name, bed, fdm, nozzles:noz, firmware:$('wp-fw').value||null,
+           flow:+$('wp-flow').value||undefined, watts:+$('wp-watts').value||100,
+           rate:+$('wp-rate').value||0, maint:+$('wp-maint').value||0,
+           fail:+$('wp-fail').value||0, prep:+$('wp-prep').value||0, post:+$('wp-post').value||0,
+           atelier:true};
+  if(!fdm) delete p.flow;
+  WPROFILES[key]=p; PRINTERS[key]=p;
+  if(!wpSave()) return;
+  renderPrinterSelect(key); wpClose(); wpSync(); wpApply();
+};
+// Sélectionner une machine d'atelier réinjecte SON économie et SES buses dans
+// les cartes qui s'en servent — sinon le devis resterait sur des valeurs par
+// défaut tout en affichant le nom d'une machine réelle, ce qui serait pire que
+// pas de profil du tout.
+const SL_NOZ_DEFAUT=$('sl-noz').innerHTML;
+function wpApply(){
+  const p=PRINTERS[$('printer').value];
+  if(!p||!p.atelier){
+    // Retour à une machine intégrée : rétablir la liste de buses complète,
+    // sinon elle resterait bridée à celles de l'atelier précédemment choisi.
+    if($('sl-noz').innerHTML!==SL_NOZ_DEFAUT){ const c=$('sl-noz').value; $('sl-noz').innerHTML=SL_NOZ_DEFAUT;
+      if($('sl-noz').querySelector(`option[value="${c}"]`)) $('sl-noz').value=c; }
+  }
+  if(p&&p.atelier){
+    if(p.rate!=null||p.maint!=null) $('dv-mach').value=((p.rate||0)+(p.maint||0)).toFixed(2).replace(/\.00$/,'');
+    if(p.fail!=null) $('dv-fail').value=p.fail;
+    if(p.prep!=null) $('dv-prep').value=p.prep;
+    if(p.post!=null) $('dv-post').value=p.post;
+    if(p.nozzles&&p.nozzles.length){
+      const cur=+$('sl-noz').value;
+      $('sl-noz').innerHTML=p.nozzles.map(n=>`<option value="${n}">${n.toFixed(2).replace('.',',')} mm</option>`).join('');
+      $('sl-noz').value=p.nozzles.includes(cur)?cur:p.nozzles[0];
+    }
+    if(p.firmware) $('gfw').value=p.firmware;
+  }
+  update(); slSync(); dvRender(); gGateModes(); gRenderSafety();
+}
+$('printer').addEventListener('input',()=>{ wpSync(); wpApply(); });
+
 // ══ DEVIS D'ATELIER ═════════════════════════════════════════════════════════
 // Prix de revient complet puis prix conseillé. Deux points de méthode qui
 // changent tout et que l'affichage doit dire :
@@ -2487,6 +2644,7 @@ function dvRender(){
     row(`PRIX CONSEILLÉ HT${d.qty>1?` (${d.qty} pièces)`:''}`,d.prix,'prix')+
     (d.qty>1?`<div class="dvline"><span class="k">soit à l'unité</span><span>${dvEur(d.unit)}</span></div>`:'')+
     `<div class="dvsrc">Marge de ${(d.marge*100).toFixed(0)} % prise sur le prix de vente · `+
+    (d.pr.atelier?`coûts du profil <b>${d.pr.name}</b> · `:'')+
     `${d.weightG.toFixed(0)} g et ${d.timeH.toFixed(2)} h par pièce, d'après <b>${d.src}</b>`+
     (d.sliced?'':' — tranche le modèle en carte 4-5 pour un prix fondé sur le temps réel')+
     `. Prix hors taxes. Ce devis est une donnée économique : il ne garantit pas la fabrication.</div>`;
@@ -3028,5 +3186,6 @@ run(demoTris());          // charge la démo au démarrage
 gDraw(1);                 // placeholder de l'aperçu G-code
 slSync();                 // réglages dérivés + scripts start/end de la trancheuse
 dvRender();               // devis initial sur la démo
+wpSync();                 // état des boutons de profil d'atelier
 </script>
 </body></html>
