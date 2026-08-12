@@ -118,6 +118,13 @@ input[type=text].gtxt{width:100%;background:#141416;color:var(--txt);border:.5px
 #gverdict{margin-left:10px;vertical-align:middle;font-size:12px;}
 #s-elec{margin-top:10px;font-size:12.5px;color:var(--dim2);}
 
+/* Tolérances */
+.sechead .g6{background:linear-gradient(90deg,#64d2ff,#bf5af2 80%);-webkit-background-clip:text;background-clip:text;color:transparent;}
+.tolcote{font-family:var(--mono);font-size:28px;font-weight:700;color:var(--cyan);letter-spacing:-.02em;margin:2px 0 2px;}
+.tolrow{display:flex;justify-content:space-between;gap:12px;padding:4px 0;font-family:var(--mono);font-size:12.5px;color:var(--dim);}
+.tolrow b{color:var(--txt);font-weight:600;}
+.tolconf{display:inline-block;margin-top:8px;font-size:11.5px;font-weight:600;padding:3px 10px;border-radius:99px;}
+
 /* Profils d'atelier */
 .wpbox{background:var(--card2);border-radius:14px;padding:14px;margin-top:4px;}
 .wpbox input[type=text].gtxt{font:14px var(--font);}
@@ -245,6 +252,7 @@ footer .disc{max-width:640px;margin:0 auto 10px;}
               <div class="fld"><label>Taux d'échec constaté (%)</label><input type="number" id="wp-fail" min="0" max="100" value="8"></div>
               <div class="fld"><label>Préparation (min/lot)</label><input type="number" id="wp-prep" min="0" value="10"></div>
               <div class="fld"><label>Post-traitement (min/pièce)</label><input type="number" id="wp-post" min="0" value="15"></div>
+              <div class="fld"><label>Compensation de trou mesurée (mm)</label><input type="number" id="wp-comp" min="0" max="1" step="0.01" value="0.1"></div>
             </div>
             <div class="gnote">Ces valeurs alimentent directement le <b>devis</b> (carte 6), les <b>contrôles de volume et de débit</b> (carte 9) et la <b>trancheuse</b>. Elles restent dans ce navigateur — aucun compte, rien n'est envoyé.</div>
             <div class="row-btn" style="justify-content:flex-start">
@@ -305,6 +313,13 @@ footer .disc{max-width:640px;margin:0 auto 10px;}
             <input type="range" id="th-slider" min="1" max="1" step="1" value="1" disabled>
           </div>
         </div>
+      </div>
+
+      <div class="thbox">
+        <div class="row-btn" style="justify-content:flex-start;margin-top:0">
+          <button class="btn" id="or-go">🔄 Chercher une meilleure orientation</button>
+        </div>
+        <div class="gplan" id="or-out">Compare les six façons de poser la pièce sur le plateau : surface en porte-à-faux, hauteur, et surface de contact avec le plateau.</div>
       </div>
 
       <div class="export-row">
@@ -407,6 +422,39 @@ footer .disc{max-width:640px;margin:0 auto 10px;}
     </div>
   </div>
 
+  <!-- ── TOLÉRANCES ET AJUSTEMENTS ─────────────────────────────────────── -->
+  <h2 class="sechead"><span class="g6">Tolérances et ajustements</span></h2>
+  <div class="secsub">La cote à dessiner en CAO pour que la pièce imprimée s'assemble vraiment : un trou sort toujours plus petit que dessiné, et la matière retreint en refroidissant. Ici on part de la pièce à recevoir — axe, aimant, écrou, insert — et on remonte à la cote du modèle.</div>
+
+  <div class="grid">
+    <div class="card" style="grid-column:1/-1">
+      <h2>7 · Du besoin d'assemblage à la cote CAO</h2>
+      <div class="grid" style="margin-top:0;gap:20px">
+        <div>
+          <div class="slgrid">
+            <div class="fld" style="grid-column:1/-1"><label>Usage</label>
+              <select id="tol-fit"></select></div>
+            <div class="fld"><label>Élément à dessiner</label>
+              <select id="tol-kind">
+                <option value="hole">Trou / logement (creux)</option>
+                <option value="shaft">Axe / téton (plein)</option>
+              </select></div>
+            <div class="fld"><label>Cote de la pièce à recevoir (mm)</label>
+              <input type="number" id="tol-nom" min="0.5" max="300" step="0.05" value="10"></div>
+            <div class="fld"><label>Jeu visé <span class="infl" id="tol-jeuv"></span></label>
+              <input type="number" id="tol-jeu" step="0.05" value="0.25"></div>
+            <div class="fld"><label>Compensation machine (mm)</label>
+              <input type="number" id="tol-comp" min="0" max="1" step="0.01" value="0.1"></div>
+          </div>
+          <div class="gnote" id="tol-cal">💡 <b>La compensation machine est la seule valeur vraiment propre à ta machine.</b> Pour la mesurer : dessine un bloc avec des trous de 5, 10 et 20 mm, imprime-le, mesure-les au pied à coulisse. La compensation est l'écart moyen constaté — un trou dessiné à 10,00 qui sort à 9,88 donne 0,12. Sans cette mesure, la valeur par défaut vaut ce que vaut une moyenne.</div>
+        </div>
+        <div>
+          <div class="gplan" id="tol-out" style="margin-top:0"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- ── BOÎTE À OUTILS G-CODE ─────────────────────────────────────────── -->
   <h2 class="sechead"><span class="g">Boîte à outils G-code</span></h2>
   <div class="secsub">Visualise tes trajectoires en <b>3D</b> (colorées par type : parois, remplissage, supports…), passe ton G-code au <b>contrôle de sécurité prévol</b> (hors plateau, extrusion à froid, chauffages, firmware), puis modifie-le : <b>pause</b>, <b>changement de filament</b>, <b>température ou ventilation par plage de couches</b>. 100 % local, ton G-code ne quitte pas le navigateur.</div>
@@ -414,7 +462,7 @@ footer .disc{max-width:640px;margin:0 auto 10px;}
   <div class="grid">
     <!-- LEFT : gcode upload + stats + layer preview -->
     <div class="card">
-      <h2>7 · Ton G-code</h2>
+      <h2>8 · Ton G-code</h2>
       <div id="gdrop">
         <div class="big">⚙️</div>
         <div class="t">Dépose un fichier G-code ici</div>
@@ -462,7 +510,7 @@ footer .disc{max-width:640px;margin:0 auto 10px;}
 
     <!-- RIGHT : pause insertion -->
     <div class="card">
-      <h2>8 · Modifier : pause, filament, températures</h2>
+      <h2>9 · Modifier : pause, filament, températures</h2>
       <div class="ctrls" style="margin-top:0">
         <div class="fld" style="grid-column:1/-1"><label>Firmware de la machine — <b>obligatoire</b> avant modification (les commandes valides en dépendent)</label>
           <select id="gfw">
@@ -505,7 +553,7 @@ footer .disc{max-width:640px;margin:0 auto 10px;}
 
     <!-- FULL WIDTH : safety preflight -->
     <div class="card" style="grid-column:1/-1">
-      <h2>9 · Contrôle de sécurité prévol <span class="badge" id="gverdict" style="display:none"></span></h2>
+      <h2>10 · Contrôle de sécurité prévol <span class="badge" id="gverdict" style="display:none"></span></h2>
       <div id="gsafety"><div class="empty">Charge un G-code pour lancer le contrôle prévol (hors plateau, homing, extrusion à froid, chauffages, modes G90/G91, compatibilité firmware).</div></div>
     </div>
   </div>
@@ -517,7 +565,7 @@ footer .disc{max-width:640px;margin:0 auto 10px;}
   <div class="grid">
     <!-- LEFT : capture guide -->
     <div class="card">
-      <h2>10 · Bien capturer ton objet (photos ou vidéo)</h2>
+      <h2>11 · Bien capturer ton objet (photos ou vidéo)</h2>
       <div class="risk"><div class="ic">📷</div><div class="body"><b>30 à 60 photos qui se chevauchent (60–80 %)</b><div class="d">Fais le tour complet à 3 hauteurs (vue basse, à niveau, plongée), une photo tous les 10–15°. Chaque détail doit apparaître sur au moins 3 photos.</div></div></div>
       <div class="risk"><div class="ic">💡</div><div class="body"><b>Lumière douce et constante</b><div class="d">Ciel voilé, lightbox ou pièce bien éclairée. Jamais de flash, pas d'ombres dures, et verrouille l'exposition : la luminosité ne doit pas changer pendant le tour.</div></div></div>
       <div class="risk"><div class="ic">🎯</div><div class="body"><b>Netteté avant tout</b><div class="d">Focale fixe (pas de zoom en cours de route), ISO bas, f/8–f/11 si réglable, appareil stable. Une photo floue est pire qu'une photo manquante — supprime-les.</div></div></div>
@@ -530,7 +578,7 @@ footer .disc{max-width:640px;margin:0 auto 10px;}
 
     <!-- RIGHT : printable scale mat -->
     <div class="card">
-      <h2>11 · Planche d'échelle à imprimer (A4)</h2>
+      <h2>12 · Planche d'échelle à imprimer (A4)</h2>
       <div class="gnote" style="margin-top:0">
         ① <b>Imprime à 100 %</b> (« taille réelle » — jamais « ajuster à la page »), A4 portrait.<br>
         ② <b>Vérifie l'impression</b> : la barre doit mesurer <b>100,0 mm</b> au réglet, OU pose une carte bancaire sur le cadre en bas — elle doit le couvrir exactement. Si écart : corrige l'échelle d'impression avant usage.<br>
@@ -1370,7 +1418,7 @@ function gSafety(){
     if(fw){ const bad=pl.filter(([k])=>!fw.pause.includes(k));
       if(bad.length) rows.push(['⚠️','warn',`Pauses incompatibles avec ${fw.name}`,bad.map(([k])=>GMODE_LABEL(k)).join(', ')+' — ces commandes seraient ignorées ou mal gérées par ce firmware.']); }
   }
-  if(!fw) rows.push(['⚠️','warn','Firmware non renseigné','La compatibilité des commandes n\'est pas vérifiée — sélectionne le firmware dans le panneau 8.']);
+  if(!fw) rows.push(['⚠️','warn','Firmware non renseigné','La compatibilité des commandes n\'est pas vérifiée — sélectionne le firmware dans le panneau 9.']);
   const verdict=rows.some(r=>r[0]==='🚫')?['🔴','À CORRIGER']:rows.some(r=>r[1]==='warn')?['🟠','À VÉRIFIER']:['🟢','PRÊT À IMPRIMER'];
   return {rows, verdict};
 }
@@ -2493,6 +2541,147 @@ $('sl-dl').onclick=()=>{
   a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),5000);
 };
 
+// ══ ORIENTATION ═════════════════════════════════════════════════════════════
+// On évalue les six façons de poser la pièce sur le plateau, sans trancher :
+// tout se déduit des normales et des projections, donc en une passe par
+// orientation. Trancher chaque candidat coûterait des dizaines de secondes
+// pièce, pour un classement que la géométrie donne déjà.
+// Limite assumée et affichée : SEULES les six orientations sur les axes sont
+// testées. Une pose inclinée peut être meilleure ; elle n'est pas cherchée ici.
+const OR_DIRS=[
+  {u:[0,0,1],  nom:'orientation actuelle'},
+  {u:[0,0,-1], nom:'retournée (180° autour de X)'},
+  {u:[0,1,0],  nom:'basculée en arrière (X −90°)'},
+  {u:[0,-1,0], nom:'basculée en avant (X +90°)'},
+  {u:[1,0,0],  nom:'couchée sur la gauche (Y +90°)'},
+  {u:[-1,0,0], nom:'couchée sur la droite (Y −90°)'},
+];
+// `orient` = signe du volume signé du maillage. Un STL globalement retourné a
+// toutes ses normales à l'envers : sans cette correction, on mesurerait les
+// faces du DESSUS en croyant compter les porte-à-faux, et aucune face ne serait
+// jamais vue posée sur le plateau. C'est la correction que font déjà analyze()
+// et la trancheuse — l'oublier ici donnait 0 cm² de contact sur une pièce à
+// fond plat.
+function orSign(tris){
+  let v6=0;
+  for(const [a,b,c] of tris)
+    v6 += a[0]*(b[1]*c[2]-b[2]*c[1]) - a[1]*(b[0]*c[2]-b[2]*c[0]) + a[2]*(b[0]*c[1]-b[1]*c[0]);
+  return v6>=0?1:-1;
+}
+function orEval(tris,u,orient){
+  const SIN=Math.sin(OVERHANG_LIMIT*Math.PI/180);
+  let over=0, tot=0, contact=0, mn=1e9, mx=-1e9;
+  const proj=p=>p[0]*u[0]+p[1]*u[1]+p[2]*u[2];
+  // 1re passe : hauteur (bornes de la projection sur l'axe vertical choisi)
+  for(const t of tris) for(const p of t){ const z=proj(p); if(z<mn)mn=z; if(z>mx)mx=z; }
+  // 2e passe : aires, en distinguant ce qui pose à plat de ce qui pend
+  for(const t of tris){
+    const [a,b,c]=t;
+    const ux=b[0]-a[0],uy=b[1]-a[1],uz=b[2]-a[2], vx=c[0]-a[0],vy=c[1]-a[1],vz=c[2]-a[2];
+    let nx=uy*vz-uz*vy, ny=uz*vx-ux*vz, nz=ux*vy-uy*vx;
+    const l=Math.hypot(nx,ny,nz); if(l<1e-12) continue;
+    const A=l/2; tot+=A;
+    const d=(nx*u[0]+ny*u[1]+nz*u[2])/l*orient;   // composante verticale de la normale
+    const zc=(proj(a)+proj(b)+proj(c))/3;
+    if(d<-0.995 && zc-mn<0.3) contact+=A;      // face posée sur le plateau
+    else if(-d>SIN && zc-mn>1) over+=A;        // surplomb réel, hors 1re couche
+  }
+  return {over, tot, contact, h:mx-mn, pctOver:tot>0?over/tot*100:0};
+}
+function orRun(){
+  if(!SCALED){ $('or-out').textContent='Charge un modèle d\'abord.'; return; }
+  const sgn=orSign(SCALED);
+  const res=OR_DIRS.map(d=>({...d, ...orEval(SCALED,d.u,sgn)}));
+  const cur=res[0];
+  // Classement : le porte-à-faux d'abord (c'est lui qui rate une impression),
+  // la hauteur ensuite (temps et stabilité), le contact au plateau en appoint.
+  const score=r=>r.pctOver*3 + (r.h/Math.max(1,cur.h))*10 - (r.contact/Math.max(1e-6,r.tot))*100*0.5;
+  const best=res.slice().sort((a,b)=>score(a)-score(b))[0];
+  const d=(a,b)=>b===0?(a===0?0:100):(a-b)/b*100;
+  const pc=v=>(v>=0?'+':'−')+Math.abs(v).toFixed(0)+' %';
+  const gain=best!==cur && score(best)<score(cur)-0.5;
+  $('or-out').innerHTML=
+    `<b>Orientation actuelle</b> — ${cur.pctOver.toFixed(1)} % de la surface en porte-à-faux · `+
+    `hauteur ${cur.h.toFixed(0)} mm · contact plateau ${(cur.contact/100).toFixed(1)} cm²<br>`+
+    (gain
+      ? `<b style="color:var(--green)">Meilleure pose : ${best.nom}</b><br>`+
+        `<span class="layer-lbl">porte-à-faux ${pc(d(best.pctOver,cur.pctOver))} · `+
+        `hauteur ${pc(d(best.h,cur.h))} · contact plateau ${pc(d(best.contact,cur.contact))}</span><br>`+
+        `<span style="color:var(--dim2)">Applique la rotation dans ton logiciel de CAO ou ton slicer, puis recharge le fichier ici pour vérifier.</span>`
+      : `<b style="color:var(--green)">Aucune des cinq autres poses ne fait mieux</b> — garde celle-ci.`)+
+    `<br><span style="color:var(--dim2)">Seules les six orientations sur les axes sont comparées : une pose inclinée pourrait être meilleure, elle n'est pas cherchée ici. Comparaison géométrique, sans tranchage.</span>`;
+}
+$('or-go').onclick=orRun;
+
+// ══ TOLÉRANCES ET AJUSTEMENTS ═══════════════════════════════════════════════
+// Trois effets se cumulent entre la cote dessinée et la cote obtenue :
+//  1. le JEU voulu par l'usage (glissant, serré, collé…) — une décision, pas
+//     une propriété de la machine ;
+//  2. le RETRAIT de la matière au refroidissement — proportionnel à la cote ;
+//  3. la COMPENSATION machine : un trou sort toujours plus petit que dessiné
+//     (le cordon intérieur pousse la matière vers le centre, et un cercle
+//     facetté est inscrit, donc plus petit). C'est la SEULE valeur vraiment
+//     propre à la machine, et la seule qui se mesure au pied à coulisse.
+// On affiche la décomposition plutôt qu'un nombre magique : c'est ce qui
+// permet à l'utilisateur de corriger le terme qui le concerne quand la pièce
+// ne rentre pas, au lieu de tâtonner sur le tout.
+const SHRINK={PLA:0.003, PETG:0.005, ABS:0.008, ASA:0.008, TPU:0.010,
+              RESIN_CASTABLE:0.005, WAX_CASTING:0.005};
+const FITS={
+  sliding:{label:'Coulissant — l\'axe tourne ou glisse', jeu:0.25, kind:'hole', conf:'bonne',
+    note:"Jeu diamétral usuel pour un axe métallique dans un trou imprimé. Si la pièce doit tourner sous charge, préfère un roulement."},
+  loose:{label:'Libre — montage sans contrainte', jeu:0.45, kind:'hole', conf:'bonne',
+    note:"Assemblage qui doit entrer sans forcer, sans exigence de guidage."},
+  press:{label:'Serré — press-fit, entré au maillet', jeu:-0.10, kind:'hole', conf:'moyenne',
+    note:"Serrage négatif : le trou est plus petit que la pièce. Au-delà de 0,15 mm d'interférence, le risque est de fendre la paroi — épaissis-la, ou chauffe légèrement la pièce imprimée."},
+  bearing:{label:'Roulement — bague extérieure', jeu:-0.05, kind:'hole', conf:'faible',
+    note:"Un roulement supporte mal d'être déformé : un serrage trop fort le bloque. Prévois un épaulement et vérifie qu'il tourne librement une fois monté."},
+  insert:{label:'Insert thermique — Ø extérieur de l\'insert', jeu:-0.40, kind:'hole', conf:'faible',
+    note:"Le trou DOIT être plus petit que l'insert : c'est la matière fondue refoulée qui assure la tenue. Les fabricants publient une cote de perçage propre à chaque référence — suis-la en priorité, cette valeur n'est qu'un ordre de grandeur."},
+  magnet:{label:'Aimant — collé dans son logement', jeu:0.15, kind:'hole', conf:'bonne',
+    note:"Un léger jeu laisse la place à la colle. Un aimant en force se fissure, et un aimant chauffé perd de sa force."},
+  nut:{label:'Écrou six pans — cote entre plats', jeu:0.20, kind:'hole', conf:'bonne',
+    note:"Cote entre plats normalisée (ISO 4032) : M3 = 5,5 · M4 = 7,0 · M5 = 8,0 · M6 = 10,0 mm. Le logement doit retenir l'écrou en rotation, pas le serrer."},
+  screw:{label:'Vis — trou de passage', jeu:0.40, kind:'hole', conf:'bonne',
+    note:"Trou de passage moyen (ISO 273) : M3 = 3,4 · M4 = 4,5 · M5 = 5,5 · M6 = 6,6 mm. Pour du filetage direct dans le plastique, prends plutôt le diamètre nominal moins 10 %."},
+};
+$('tol-fit').innerHTML=Object.entries(FITS).map(([k,v])=>`<option value="${k}">${v.label}</option>`).join('');
+function tolCompute(){
+  const f=FITS[$('tol-fit').value]||FITS.sliding;
+  const kind=$('tol-kind').value;
+  const nom=Math.max(0.1,parseFloat($('tol-nom').value)||10);
+  const jeu=parseFloat($('tol-jeu').value); const J=isFinite(jeu)?jeu:f.jeu;
+  const comp=Math.max(0,parseFloat($('tol-comp').value)||0);
+  const matKey=$('material').value, mat=MATERIALS[matKey]||MATERIALS.PLA;
+  const s=SHRINK[matKey]!=null?SHRINK[matKey]:0.005;
+  // Un trou doit être AGRANDI (jeu, retrait, compensation) ; un axe doit être
+  // RÉDUIT du jeu, mais reste agrandi par le retrait et la compensation, qui
+  // rétrécissent la matière dans les deux cas.
+  const sgn=kind==='hole'?1:-1;
+  const retrait=nom*s;
+  const cote=nom + sgn*J + retrait + comp*sgn;
+  return {f,kind,nom,J,comp,s,retrait,cote,mat};
+}
+function tolRender(){
+  const t=tolCompute();
+  $('tol-jeuv').textContent=`défaut ${FITS[$('tol-fit').value].jeu.toFixed(2)} mm`;
+  const cc={bonne:['var(--green)','rgba(48,209,88,.14)'],moyenne:['var(--amber)','rgba(255,159,10,.15)'],
+            faible:['var(--red)','rgba(255,69,58,.15)']}[t.f.conf];
+  const sg=v=>(v>=0?'+ ':'− ')+Math.abs(v).toFixed(3).replace('.',',');
+  $('tol-out').innerHTML=
+    `<div style="color:var(--dim2);font-size:12px">Cote à dessiner en CAO — ${t.kind==='hole'?'trou / logement':'axe / téton'}</div>`+
+    `<div class="tolcote">Ø ${t.cote.toFixed(2).replace('.',',')} mm</div>`+
+    `<div class="tolrow"><span>pièce à recevoir</span><b>${t.nom.toFixed(2).replace('.',',')} mm</b></div>`+
+    `<div class="tolrow"><span>jeu d'usage</span><b>${sg(t.kind==='hole'?t.J:-t.J)} mm</b></div>`+
+    `<div class="tolrow"><span>retrait ${t.mat.label} (${(t.s*100).toFixed(1).replace('.',',')} %)</span><b>${sg(t.retrait)} mm</b></div>`+
+    `<div class="tolrow"><span>compensation machine</span><b>${sg(t.kind==='hole'?t.comp:-t.comp)} mm</b></div>`+
+    `<span class="tolconf" style="color:${cc[0]};background:${cc[1]}">Confiance : ${t.f.conf}</span>`+
+    `<div class="gnote" style="margin-top:10px">${t.f.note}</div>`+
+    (t.f.conf!=='bonne'?`<div class="gnote" style="color:var(--amber)">⚠️ Imprime une pièce d'essai avant de lancer la série : sur cet usage, l'écart entre machines dépasse souvent le jeu visé.</div>`:'');
+}
+['tol-fit','tol-kind','tol-nom','tol-jeu','tol-comp'].forEach(id=>$(id).addEventListener('input',tolRender));
+$('tol-fit').addEventListener('input',()=>{ $('tol-jeu').value=FITS[$('tol-fit').value].jeu; tolRender(); });
+
 // ══ ÉDITEUR DE PROFILS D'ATELIER ════════════════════════════════════════════
 let wpEditing=null;                       // clé en cours d'édition, null = création
 const wpIsMine=k=>Object.prototype.hasOwnProperty.call(WPROFILES,k);
@@ -2509,6 +2698,7 @@ function wpFill(p){
   $('wp-fail').value=p&&p.fail!=null?p.fail:8;
   $('wp-prep').value=p&&p.prep!=null?p.prep:10;
   $('wp-post').value=p&&p.post!=null?p.post:15;
+  $('wp-comp').value=p&&p.comp!=null?p.comp:0.1;
 }
 function wpOpen(key){
   wpEditing=key||null;
@@ -2550,7 +2740,7 @@ $('wp-save').onclick=()=>{
            flow:+$('wp-flow').value||undefined, watts:+$('wp-watts').value||100,
            rate:+$('wp-rate').value||0, maint:+$('wp-maint').value||0,
            fail:+$('wp-fail').value||0, prep:+$('wp-prep').value||0, post:+$('wp-post').value||0,
-           atelier:true};
+           comp:+$('wp-comp').value||0, atelier:true};
   if(!fdm) delete p.flow;
   WPROFILES[key]=p; PRINTERS[key]=p;
   if(!wpSave()) return;
@@ -2580,8 +2770,14 @@ function wpApply(){
       $('sl-noz').value=p.nozzles.includes(cur)?cur:p.nozzles[0];
     }
     if(p.firmware) $('gfw').value=p.firmware;
+    // Compensation MESURÉE sur cette machine : c'est tout l'intérêt du profil,
+    // la valeur par défaut n'étant qu'une moyenne inter-machines.
+    if(p.comp!=null) $('tol-comp').value=p.comp;
+  } else {
+    // Machine intégrée : compensation estimée d'après la buse, faute de mesure.
+    $('tol-comp').value=(0.25*(+$('sl-noz').value||0.4)).toFixed(2);
   }
-  update(); slSync(); dvRender(); gGateModes(); gRenderSafety();
+  update(); slSync(); dvRender(); gGateModes(); gRenderSafety(); tolRender();
 }
 $('printer').addEventListener('input',()=>{ wpSync(); wpApply(); });
 
@@ -3187,5 +3383,8 @@ gDraw(1);                 // placeholder de l'aperçu G-code
 slSync();                 // réglages dérivés + scripts start/end de la trancheuse
 dvRender();               // devis initial sur la démo
 wpSync();                 // état des boutons de profil d'atelier
+$('tol-comp').value=(0.25*(+$('sl-noz').value||0.4)).toFixed(2);
+tolRender();              // tolérances (dépend du matériau de la carte 1)
+$('material').addEventListener('input',tolRender);   // le retrait dépend de la matière
 </script>
 </body></html>
