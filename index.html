@@ -324,7 +324,9 @@ footer .disc{max-width:640px;margin:0 auto 10px;}
 
       <div class="export-row">
         <button class="btn export" id="export" disabled>📄 Exporter le rapport (PDF)</button>
+        <button class="btn" id="pp-go" style="margin-left:8px">🔏 Passeport de fabrication</button>
       </div>
+      <div class="gplan" id="pp-out" style="display:none"></div>
     </div>
   </div>
 
@@ -1129,6 +1131,7 @@ function update(){
     note.style.display='none';
   }
   const R=[...(MH?meshRows(MH):[]), ...risks(G,est)];
+  LASTRISKS=R;   // consignés tels quels dans le passeport de fabrication
   $('risks').innerHTML=R.map(([ic,cl,t,d])=>`<div class="risk ${cl}"><div class="ic">${ic}</div><div class="body"><b>${t}</b><div class="d">${d}</div></div></div>`).join('');
   const exp=$('export'); exp.disabled=false; exp.classList.add('ready');
   slSync();   // la trancheuse dépend du modèle courant (cotes, volume, surplombs) : un
@@ -2544,6 +2547,93 @@ $('sl-dl').onclick=()=>{
   a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),5000);
 };
 
+// ══ PASSEPORT DE FABRICATION (compatible NODUS, sans compte ni réseau) ══════
+// Séparation d'architecture voulue : le Print Checker ÉMET une constatation
+// locale, NODUS apporte la preuve et l'identité. L'un n'a pas besoin de l'autre
+// pour fonctionner, et rien ici ne part sur le réseau.
+//
+// La forme canonique reproduit à l'octet près celle de `nodus/canonique.py` :
+// JSON, clés triées à TOUS les niveaux, séparateurs compacts, non-ASCII non
+// échappé, champ de signature exclu. NODUS documente que deux canonicalisations
+// divergentes cassent la vérification SANS RIEN SIGNALER — la signature reste
+// mathématiquement valide, elle porte simplement sur d'autres octets. D'où deux
+// précautions : une seule fonction ici, et AUCUN nombre flottant dans le
+// manifeste (Python et JavaScript ne les rendent pas toujours pareil) — toutes
+// les valeurs mesurées sont des chaînes à décimales fixées.
+function nodusCanonical(obj, sauf='signature'){
+  const tri=v=>{
+    if(Array.isArray(v)) return v.map(tri);
+    if(v&&typeof v==='object'&&!(v instanceof Date)){
+      const o={}; for(const k of Object.keys(v).sort()) o[k]=tri(v[k]); return o;
+    }
+    return v;
+  };
+  const m={};
+  for(const k of Object.keys(obj).sort()) if(k!==sauf) m[k]=tri(obj[k]);
+  return JSON.stringify(m);
+}
+const nodusLisible=h=>((h||'').slice(0,12).toUpperCase().match(/.{1,4}/g)||[]).join(' ');
+const nb=(v,d=2)=>v==null||!isFinite(v)?null:Number(v).toFixed(d);
+
+let LASTRISKS=[];
+function ppManifest(){
+  if(!G) return null;
+  const pr=PRINTERS[$('printer').value]||PRINTERS.bambu_a1;
+  const mat=MATERIALS[$('material').value]||MATERIALS.PLA;
+  const s=G.size;
+  const verdict=ic=>ic==='🚫'?'bloquant':ic==='⚠️'?'attention':ic==='✅'?'conforme':'information';
+  const m={
+    type:'print-passport', version:1,
+    horodatage:new Date().toISOString(),
+    outil:{nom:'3D Print Checker', editeur:'DELIGNY R&D',
+           url:'https://deligny-r-d.github.io/print-checker/'},
+    modele:{nom:curFileName, sha256:MODELHASH||null, triangles:G.tris,
+            dimensions_mm:{x:nb(s[0]), y:nb(s[1]), z:nb(s[2])},
+            maillage:MH?{score:MH.score, etanche:!!MH.watertight, coques:MH.shells,
+                         aretes_ouvertes:MH.open, non_manifold:MH.nm}:null},
+    machine:{nom:pr.name, profil_atelier:!!pr.atelier,
+             volume_mm:{x:pr.bed[0], y:pr.bed[1], z:pr.bed[2]},
+             procede:pr.fdm===false?'resine':'fdm'},
+    matiere:{nom:mat.label, densite:nb(mat.density,3)},
+    parametres:{remplissage_pct:+$('infill').value, paroi_mm:nb(+$('wall').value),
+                unite_fichier:$('unit').value},
+    controles:LASTRISKS.map(([ic,,titre])=>({verdict:verdict(ic), intitule:titre})),
+  };
+  // Le tranchage n'existe que s'il a eu lieu : on ne fabrique pas de champ vide,
+  // qui laisserait croire à une mesure absente.
+  if(SLRES) m.tranchage={couches:SLRES.nLayers, filament_m:nb(SLRES.filM,3),
+                         masse_g:nb(SLRES.weightG,1), duree_s:SLRES.timeS,
+                         hauteur_couche_mm:nb(SLRES.step||0,3)||undefined};
+  if(SLGCODE) m.gcode={sha256:null, octets:SLGCODE.length};
+  if(TH) m.epaisseurs={seuil_mm:nb(TH.seuil), minimum_mm:TH.minRobust!=null?nb(TH.minRobust):null,
+                       supports_cm2:nb(TH.supArea/100,1), ponts:TH.brCount,
+                       portee_pont_max_mm:TH.brCount?nb(TH.brMaxSpan,1):null};
+  return m;
+}
+$('pp-go').onclick=async()=>{
+  const m=ppManifest();
+  if(!m){ alert('Charge un modèle d\'abord.'); return; }
+  if(SLGCODE) m.gcode.sha256=await sha256hex(SLGCODE);
+  const octets=nodusCanonical(m);
+  const sha=await sha256hex(octets);
+  const out=$('pp-out'); out.style.display='block';
+  out.innerHTML=
+    `<b>Passeport de fabrication émis localement</b><br>`+
+    `<span class="layer-lbl">empreinte ${nodusLisible(sha)}</span> `+
+    `<span style="color:var(--dim2)">(SHA-256 des octets canoniques)</span><br>`+
+    `<span style="color:var(--dim2)">${m.controles.length} contrôles consignés`+
+    (m.tranchage?` · tranchage inclus`:'')+(m.epaisseurs?` · épaisseurs et supports inclus`:'')+
+    ` · ${octets.length} octets</span><br>`+
+    `<span style="color:var(--dim2)">Ce fichier est une <b>constatation locale</b> : il dit ce que cet outil a mesuré, `+
+    `et permet à quiconque de vérifier que rien n'a bougé depuis. Il ne prouve ni qui l'a émis, ni quand — `+
+    `c'est le rôle de <b>NODUS</b>, qui peut le sceller ensuite, hors ligne, sans compte ni envoi. `+
+    `Le manifeste est déjà dans SA forme canonique : le sceller ne le réécrit pas, donc l'empreinte ci-dessus reste la sienne.</span>`;
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([octets],{type:'application/json'}));
+  a.download=(curFileName||'piece').replace(/[^\w\-]+/g,'_')+'.passeport.json';
+  a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),5000);
+};
+
 // ══ ORIENTATION ═════════════════════════════════════════════════════════════
 // On évalue les six façons de poser la pièce sur le plateau, sans trancher :
 // tout se déduit des normales et des projections, donc en une passe par
@@ -3424,6 +3514,7 @@ addEventListener('afterprint',()=>document.body.classList.remove('print-mat','pr
 window.PrintChecker={gParse,gPauseBlock,gApply,gEdits,gSafety,
   slice:(o={})=>slSlice(SCALED,{...slCfg(),...o}), slCfg,
   get _th(){ return TH; }, thickLayer:slThickLayer,
+  passeport:ppManifest, canonique:nodusCanonical,
   get _3d(){ return {data:G3D, viewer:g3r}; },
   get _gcode(){ return SLGCODE; }};
 
