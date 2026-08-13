@@ -959,6 +959,9 @@ function risks(g, est){
     if(TH.supArea>0)
       R.push(['⚠️','warn',`${(TH.supArea/100).toFixed(1)} cm² de matière en l'air — supports nécessaires`,
         `Réparti sur ${TH.supLayers} coupe${TH.supLayers>1?'s':''} (plus grand îlot ${TH.supMaxIsland.toFixed(0)} mm²), au-delà de ${TH.supAngle}° de surplomb. Environ ${(TH.supVol/1000).toFixed(1)} cm³ de matière de support à prévoir. La trancheuse de cette page n'en génère pas : active-les dans ton slicer, ou réoriente la pièce.`]);
+    if(TH.brLong>0)
+      R.push(['⚠️','warn',`${TH.brLong} pont${TH.brLong>1?'s':''} de plus de ${TH.brMax} mm (portée max ${TH.brMaxSpan.toFixed(0)} mm)`,
+        `Un cordon tendu au-dessus du vide s'affaisse au-delà d'une vingtaine de millimètres, même bien refroidi. Ces zones n'ont pas besoin de supports — elles sont tenues des deux côtés — mais ventile à fond, ralentis la couche de pont, ou ajoute une nervure intermédiaire.`]);
     if(TH.zThin&&TH.minZ!=null)
       R.push(['⚠️','warn',`Plaque horizontale de ${TH.minZ.toFixed(2)} mm (± ${(TH.step/2).toFixed(2)})`,
         `Une paroi à plat plus mince que ${TH.seuil.toFixed(2)} mm ne tiendra pas en quelques couches. C'est le cas qu'aucune coupe ne montre : vue de dessus elle paraît large.`]);
@@ -3021,7 +3024,14 @@ async function slAnalyzeThickness(tris,cfg,onProgress){
   let minZrun=Infinity, minZpx=0;
   // ── supports : matière qui n'a rien sous elle ────────────────────────────
   const prevM=new Uint8Array(WH), pv=new Uint8Array(WH), dil=new Uint8Array(WH),
-        tmpD=new Uint8Array(WH), unsup=new Uint8Array(WH);
+        tmpD=new Uint8Array(WH), unsup=new Uint8Array(WH), supM=new Uint8Array(WH);
+  const dSup=new Float32Array(WH);
+  // Ponts : une matière en l'air tenue de DEUX CÔTÉS OPPOSÉS est un pont, que
+  // la buse franchit sans support ; tenue d'un seul côté, c'est un vrai
+  // porte-à-faux. Ce qui décide n'est donc pas la surface mais la PORTÉE, et
+  // c'est elle aussi qui dit si le cordon va s'affaisser.
+  const BRIDGE_MAX=25;      // mm — au-delà, un pont s'affaisse même bien refroidi
+  let brCount=0, brMaxSpan=0, brArea=0, brLong=0;
   const lastZ=new Float32Array(WH);
   const OVER=50;                                   // ° — même limite que la carte 3
   const rSup=Math.max(1,Math.round((step/Math.tan(OVER*Math.PI/180))/px));
@@ -3113,25 +3123,60 @@ async function slAnalyzeThickness(tris,cfg,onProgress){
         let nUn=0;
         for(let k=0;k<n0;k++){ const u=(sub[k]&&!dil[k])?1:0; unsup[k]=u; if(u)nUn++; }
         if(nUn){
-          // Volume de support : chaque pixel en l'air doit être porté jusqu'à la
-          // matière qui se trouve dessous — d'où la mémoire de la dernière
-          // hauteur occupée, pixel par pixel.
+          // Matière de cette couche qui, elle, repose bien sur la précédente :
+          // ce sont les ancrages possibles d'un pont.
+          for(let k=0;k<n0;k++) supM[k]=(sub[k]&&dil[k])?1:0;
+          for(let k=0;k<n0;k++) C.seed[k]=supM[k]?0:SL_BIG;
+          slEdt(C.seed,rw,rh,dSup,C);      // distance à l'ancrage le plus proche
+          // Depuis le point le plus éloigné de tout ancrage, on marche dans
+          // quatre paires de directions opposées. Si deux directions opposées
+          // atteignent toutes deux de la matière portée sans sortir de la
+          // pièce, la zone est FRANCHIE — c'est un pont, pas un porte-à-faux —
+          // et la somme des deux distances est sa portée.
+          const MAXSTEP=Math.ceil(BRIDGE_MAX*1.6/px);
+          const walk=(cx,cy,dx,dy)=>{
+            const len=Math.hypot(dx,dy)*px;
+            for(let s=1;s<=MAXSTEP;s++){
+              const x=cx+dx*s, y=cy+dy*s;
+              if(x<0||y<0||x>=rw||y>=rh) return -1;
+              const q=y*rw+x;
+              if(supM[q]) return s*len;
+              if(!sub[q]) return -1;        // sorti de la matière : pas d'ancrage par là
+            }
+            return -1;
+          };
+          const PAIRS=[[1,0],[0,1],[1,1],[1,-1]];
           let area=0, big=0, nIsl=0;
           seen.fill(0,0,n0);
           for(let p0=0;p0<n0;p0++){
             if(seen[p0]||!unsup[p0]) continue;
-            let sp=0,n=0; stack[sp++]=p0; seen[p0]=1;
+            let sp=0,n=0,vol=0,deep=p0,dmax=-1; stack[sp++]=p0; seen[p0]=1;
             while(sp){
               const p=stack[--sp]; n++;
               const x=p%rw, y=(p/rw)|0;
-              supVol+=cellA*Math.max(0,z-lastZ[(j0+y)*W+i0+x])*SUPFILL;
+              if(dSup[p]>dmax){ dmax=dSup[p]; deep=p; }
+              vol+=cellA*Math.max(0,z-lastZ[(j0+y)*W+i0+x])*SUPFILL;
               if(x>0)   {const q=p-1; if(!seen[q]&&unsup[q]){seen[q]=1;stack[sp++]=q;}}
               if(x<rw-1){const q=p+1; if(!seen[q]&&unsup[q]){seen[q]=1;stack[sp++]=q;}}
               if(y>0)   {const q=p-rw;if(!seen[q]&&unsup[q]){seen[q]=1;stack[sp++]=q;}}
               if(y<rh-1){const q=p+rw;if(!seen[q]&&unsup[q]){seen[q]=1;stack[sp++]=q;}}
             }
             const a=n*cellA;
-            if(a>=1){ nIsl++; area+=a; if(a>big)big=a; }
+            if(a<1) continue;              // sous 1 mm², c'est du bruit de rastérisation
+            const cx=deep%rw, cy=(deep/rw)|0;
+            let span=Infinity;
+            for(const [dx,dy] of PAIRS){
+              const d1=walk(cx,cy,dx,dy), d2=walk(cx,cy,-dx,-dy);
+              // La portée retenue est la PLUS COURTE des directions franchies :
+              // c'est celle dans laquelle un slicer orientera ses cordons.
+              if(d1>=0&&d2>=0&&d1+d2<span) span=d1+d2;
+            }
+            if(isFinite(span)){
+              brCount++; brArea+=a; if(span>brMaxSpan) brMaxSpan=span;
+              if(span>BRIDGE_MAX) brLong++;
+            } else {
+              nIsl++; area+=a; if(a>big)big=a; supVol+=vol;   // vrai porte-à-faux
+            }
           }
           if(area>0){ supArea+=area; supLayers++; supIslands+=nIsl; if(big>supMaxIsland)supMaxIsland=big; }
         }
@@ -3184,6 +3229,7 @@ async function slAnalyzeThickness(tris,cfg,onProgress){
           minRobust:isFinite(critMin)?critMin:null,
           critZones, critVol, critLayers, warnVol, vol:totVol, minZone:MINZONE,
           supArea, supVol, supLayers, supIslands, supMaxIsland, supAngle:OVER, prof:PROF,
+          brCount, brArea, brMaxSpan, brLong, brMax:BRIDGE_MAX,
           screen, minSpan:isFinite(minSpan)?minSpan:null,
           // Le dépistage n'est concluant que s'il ne trouve RIEN : ni zone sous
           // le double du seuil, ni corde plus fine que 1,5× le seuil (ce second
@@ -3290,6 +3336,11 @@ $('th-go').onclick=async()=>{
         ? `<b style="color:var(--amber)">Supports nécessaires : ${(TH.supArea/100).toFixed(1)} cm² en l'air</b> sur ${TH.supLayers} coupe${TH.supLayers>1?'s':''} · `+
           `matière de support estimée <b>${(TH.supVol/1000).toFixed(1)} cm³</b> (${TH.vol>0?(TH.supVol/TH.vol*100).toFixed(0):'—'} % du volume de la pièce)<br>`
         : `<b style="color:var(--green)">Aucune zone en l'air</b> — imprimable sans support dans cette orientation<br>`)+
+      (TH.brCount>0
+        ? `<b style="color:${TH.brLong?'var(--amber)':'var(--green)'}">${TH.brCount} pont${TH.brCount>1?'s':''}</b> `+
+          `franchi${TH.brCount>1?'s':''} sans support (${(TH.brArea/100).toFixed(1)} cm²) · portée maximale <b>${TH.brMaxSpan.toFixed(1)} mm</b>`+
+          (TH.brLong?` — <b style="color:var(--amber)">${TH.brLong} au-delà de ${TH.brMax} mm, risque d'affaissement</b>`:'')+`<br>`
+        : '')+
       `<span style="color:var(--dim2)">${TH.nL} coupes de ${TH.step.toFixed(2)} mm · ${TH.px.toFixed(3)} mm/px `+
       `→ épaisseur mesurée au <b>±${(TH.px).toFixed(2)} mm</b> près, plaques horizontales au ${TH.step.toFixed(2)} mm près · ${dt} s`+
       (2*TH.px>TH.seuil/2?` <span style="color:var(--amber)">— pièce volumineuse : résolution dégradée, un défaut plus fin que ${(2*TH.px).toFixed(2)} mm peut passer inaperçu</span>`:'')+
