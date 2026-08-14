@@ -86,8 +86,8 @@ h1 .g{color:var(--noir);-webkit-text-stroke:0;
 .btn:disabled{cursor:not-allowed;}
 
 /* Écrans (rendus 3D et canvas) */
-#view{width:100%;height:300px;border:3px solid var(--noir);border-radius:16px;background:#0e1020;overflow:hidden;position:relative;box-shadow:var(--ombre-l);}
-#view canvas{display:block;} #view .hint{position:absolute;bottom:8px;left:12px;font-size:11px;color:#9aa0b5;font-weight:600;}
+#view{width:100%;height:300px;border:3px solid var(--noir);border-radius:16px;background:#F1E3C2;overflow:hidden;position:relative;box-shadow:var(--ombre-l);}
+#view canvas{display:block;} #view .hint{position:absolute;bottom:8px;left:12px;font-size:11px;color:#6B5E3E;font-weight:600;}
 
 /* Réglages */
 .ctrls{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:14px;}
@@ -143,11 +143,11 @@ input[type=range]{accent-color:var(--rose);height:22px;}
 .gstat .k{font-size:9.5px;color:var(--noir);text-transform:uppercase;letter-spacing:.06em;font-weight:900;}
 .gstat .v{font-size:17px;font-weight:900;letter-spacing:-.02em;margin-top:3px;}
 .gstat .v small{font-size:11px;color:var(--dim2);font-weight:700;}
-#gcanvas{width:100%;height:230px;border:3px solid var(--noir);border-radius:16px;background:#0e1020;display:block;margin-top:12px;box-shadow:var(--ombre-l);}
+#gcanvas{width:100%;height:230px;border:3px solid var(--noir);border-radius:16px;background:#F1E3C2;display:block;margin-top:12px;box-shadow:var(--ombre-l);}
 #g3dwrap{margin-top:12px;position:relative;}
-#g3d{width:100%;height:300px;border:3px solid var(--noir);border-radius:16px;background:#0e1020;overflow:hidden;box-shadow:var(--ombre-l);}
+#g3d{width:100%;height:300px;border:3px solid var(--noir);border-radius:16px;background:#F1E3C2;overflow:hidden;box-shadow:var(--ombre-l);}
 #g3d canvas{display:block;}
-#g3dwrap .hint{position:absolute;top:10px;right:14px;font-size:11px;color:#9aa0b5;font-weight:600;}
+#g3dwrap .hint{position:absolute;top:10px;right:14px;font-size:11px;color:#6B5E3E;font-weight:600;}
 .g3dlegend{display:flex;flex-wrap:wrap;gap:8px 12px;margin-top:10px;font-size:11px;color:var(--noir);align-items:center;font-weight:700;}
 .g3dlegend .chip{display:inline-flex;align-items:center;gap:5px;background:#fff;border:2px solid var(--noir);border-radius:99px;padding:2px 9px;}
 .g3dlegend .chip i{width:12px;height:5px;border-radius:2px;display:inline-block;border:1px solid var(--noir);}
@@ -193,14 +193,14 @@ input[type=text].gtxt{width:100%;background:#fff;color:var(--noir);border:3px so
 
 /* Carte d'épaisseurs */
 .thbox{margin-top:18px;padding-top:16px;border-top:3px dashed var(--noir);}
-#th-canvas{width:100%;height:240px;border:3px solid var(--noir);border-radius:16px;background:#0e1020;display:block;margin-top:12px;box-shadow:var(--ombre-l);}
+#th-canvas{width:100%;height:240px;border:3px solid var(--noir);border-radius:16px;background:#F1E3C2;display:block;margin-top:12px;box-shadow:var(--ombre-l);}
 
 /* Trancheuse */
 .slgrid{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
 .slgrid .fld label{display:block;font-size:11px;color:var(--noir);margin-bottom:5px;font-weight:800;text-transform:uppercase;letter-spacing:.03em;}
 .slgrid input[type=number]{width:100%;background:#fff;color:var(--noir);border:3px solid var(--noir);border-radius:12px;padding:8px 10px;font:700 14px var(--mono);}
 .slgrid input[type=range]{width:100%;accent-color:var(--rose);height:22px;}
-textarea.slcode{width:100%;height:118px;background:#0e1020;color:#d8dcff;border:3px solid var(--noir);border-radius:14px;padding:10px 12px;font:12px/1.5 var(--mono);resize:vertical;display:block;box-shadow:var(--ombre-l);}
+textarea.slcode{width:100%;height:118px;background:#FFFDF5;color:var(--noir);border:3px solid var(--noir);border-radius:14px;padding:10px 12px;font:12px/1.5 var(--mono);resize:vertical;display:block;box-shadow:var(--ombre-l);}
 .slbar{height:16px;border:3px solid var(--noir);border-radius:99px;background:#fff;overflow:hidden;margin-top:12px;display:none;}
 .slbar i{display:block;height:100%;width:0;background:repeating-linear-gradient(45deg,var(--rose) 0 8px,var(--jaune) 8px 16px);transition:width .12s linear;}
 .slwarn{margin-top:12px;padding:11px 13px;background:var(--jaune);border:3px solid var(--noir);border-radius:14px;color:var(--noir);font-size:12.5px;line-height:1.5;font-weight:600;box-shadow:var(--ombre-l);}
@@ -361,9 +361,9 @@ footer .disc{max-width:660px;margin:0 auto 10px;}
         <div id="th-view" style="display:none">
           <canvas id="th-canvas"></canvas>
           <div class="g3dlegend">
-            <span class="chip"><i style="background:#ff453a"></i>sous le seuil — ne s'imprimera pas</span>
-            <span class="chip"><i style="background:#ff9f0a"></i>1 à 2 × le seuil — fragile</span>
-            <span class="chip"><i style="background:#30d158"></i>au-delà — sain</span>
+            <span class="chip"><i style="background:#D81E1E"></i>sous le seuil — ne s'imprimera pas</span>
+            <span class="chip"><i style="background:#E07000"></i>1 à 2 × le seuil — fragile</span>
+            <span class="chip"><i style="background:#008A3C"></i>au-delà — sain</span>
           </div>
           <div class="fld" style="margin-top:8px">
             <label>Coupe <span class="layer-lbl" id="th-lbl"></span></label>
@@ -569,14 +569,14 @@ footer .disc{max-width:660px;margin:0 auto 10px;}
         <div id="g3d"></div>
         <div class="hint">glisser = tourner · molette = zoom</div>
         <div class="g3dlegend">
-          <span class="chip"><i style="background:#2997ff"></i>paroi ext.</span>
-          <span class="chip"><i style="background:#64d2ff"></i>paroi int.</span>
-          <span class="chip"><i style="background:#ff9f0a"></i>remplissage</span>
-          <span class="chip"><i style="background:#ffd60a"></i>solide / dessus</span>
-          <span class="chip"><i style="background:#bf5af2"></i>support</span>
-          <span class="chip"><i style="background:#ff453a"></i>pont</span>
-          <span class="chip"><i style="background:#30d158"></i>jupe / bord</span>
-          <span class="chip"><i style="background:#9a9aa0"></i>autre</span>
+          <span class="chip"><i style="background:#1846C8"></i>paroi ext.</span>
+          <span class="chip"><i style="background:#00A0C6"></i>paroi int.</span>
+          <span class="chip"><i style="background:#E07000"></i>remplissage</span>
+          <span class="chip"><i style="background:#C08A00"></i>solide / dessus</span>
+          <span class="chip"><i style="background:#8A2BE2"></i>support</span>
+          <span class="chip"><i style="background:#D81E1E"></i>pont</span>
+          <span class="chip"><i style="background:#008A3C"></i>jupe / bord</span>
+          <span class="chip"><i style="background:#6B5E3E"></i>autre</span>
           <span id="g3dnote" style="color:var(--amber)"></span>
         </div>
       </div>
@@ -1135,7 +1135,10 @@ const vel=$('view');
 const renderer=new THREE.WebGLRenderer({antialias:true,alpha:true});
 const scene=new THREE.Scene();
 const cam=new THREE.PerspectiveCamera(45,1,0.01,5000);
-let curMesh=null, rot={x:-1.1,y:0.6}, dist=3, drag=false, lx=0,ly=0;
+// Vue par défaut EN PLONGÉE : rot.x négatif plaçait la caméra SOUS la pièce, on
+// n'en voyait que le revers. Pour de l'impression 3D, regarder d'au-dessus
+// montre le dessus et l'emprise au plateau, c'est-à-dire ce qui se décide.
+let curMesh=null, rot={x:0.95,y:0.35}, dist=3, drag=false, lx=0,ly=0;
 function sizeView(){ const w=vel.clientWidth,h=vel.clientHeight; renderer.setSize(w,h); renderer.setPixelRatio(Math.min(2,devicePixelRatio)); cam.aspect=w/h; cam.updateProjectionMatrix(); }
 renderer.domElement.style.cursor='grab'; vel.appendChild(renderer.domElement);
 scene.add(new THREE.HemisphereLight(0xffffff,0x223344,1.5));
@@ -1160,7 +1163,7 @@ function showMesh(tris){
   // centre + normalise l'échelle d'affichage
   const c=geo.boundingSphere.center, r=geo.boundingSphere.radius||1;
   geo.translate(-c.x,-c.y,-c.z); geo.scale(1/r,1/r,1/r);
-  const mat=new THREE.MeshStandardMaterial({color:0x8fbcff,metalness:.1,roughness:.55,flatShading:true});
+  const mat=new THREE.MeshStandardMaterial({color:0xFFC400,metalness:.05,roughness:.62,flatShading:true});
   curMesh=new THREE.Mesh(geo,mat); curMesh.rotation.x=-Math.PI/2; // Z-up (STL) → Y-up (affichage)
   scene.add(curMesh); dist=3;
 }
@@ -1301,7 +1304,58 @@ function demoTris(){
   box(8,10,60, 55,40,66);   // bras horizontal en surplomb (sa face inférieure = 90°)
   return T;
 }
-$('demo').onclick=()=>run(demoTris());
+// ── Exemple intégré : badge smiley en relief ────────────────────────────────
+// Construit par primitives ADDITIVES qui s'interpénètrent (disque + yeux +
+// arc de sourire), sans aucune opération booléenne : robuste, et la règle
+// nonzero du tranchage voit l'union correctement. Conséquence assumée et
+// visible dans l'outil : le fichier compte plusieurs coques, exactement comme
+// un assemblage de primitives exporté depuis un modeleur.
+function demoSmiley(){
+  const T=[];
+  // cylindre plein : couronne latérale + deux éventails de fermeture
+  const cyl=(cx,cy,z0,z1,r,n)=>{
+    const p=a=>[cx+r*Math.cos(a), cy+r*Math.sin(a)];
+    for(let i=0;i<n;i++){
+      const a0=i/n*2*Math.PI, a1=(i+1)/n*2*Math.PI;
+      const [x0,y0]=p(a0), [x1,y1]=p(a1);
+      T.push([[x0,y0,z0],[x1,y1,z0],[x1,y1,z1]]);
+      T.push([[x0,y0,z0],[x1,y1,z1],[x0,y0,z1]]);
+      T.push([[cx,cy,z1],[x0,y0,z1],[x1,y1,z1]]);   // dessus
+      T.push([[cx,cy,z0],[x1,y1,z0],[x0,y0,z0]]);   // dessous
+    }
+  };
+  // Les reliefs partent du PLATEAU (z=0) et non du dessus du disque : leur face
+  // inférieure repose alors sur le plateau, que l'analyse de surplomb ignore à
+  // juste titre. Noyés à mi-hauteur, ils auraient exhibé des centaines de faces
+  // orientées vers le bas — de faux porte-à-faux, invisibles à l'impression
+  // mais bien réels pour un contrôle qui ne lit que des normales.
+  cyl(0,0, 0,6, 30, 72);                    // galette Ø60 × 6 mm
+  cyl(-11,9, 0,9, 4.5, 28);                 // œil gauche
+  cyl( 11,9, 0,9, 4.5, 28);                 // œil droit
+  // Sourire : UN seul solide balayé le long de l'arc, pas une chaîne de
+  // cylindres — une chaîne aurait compté vingt-trois coques distinctes et fait
+  // hurler à tort l'alerte « morceaux disjoints » sur l'exemple intégré.
+  const R=16, CY=6, A0=200*Math.PI/180, A1=340*Math.PI/180, N=26, W=2.9, Z0=0, Z1=9;
+  const st=[];
+  for(let i=0;i<=N;i++){
+    const a=A0+(A1-A0)*i/N, c=Math.cos(a), s=Math.sin(a);
+    st.push([[R*c-W*c, CY+R*s-W*s],[R*c+W*c, CY+R*s+W*s]]);   // intérieur, extérieur
+  }
+  const quad=(p,q,r,s)=>{ T.push([p,q,r]); T.push([p,r,s]); };
+  for(let i=0;i<N;i++){
+    const [a0,b0]=st[i], [a1,b1]=st[i+1];
+    quad([a0[0],a0[1],Z1],[b0[0],b0[1],Z1],[b1[0],b1[1],Z1],[a1[0],a1[1],Z1]);  // dessus
+    quad([a1[0],a1[1],Z0],[b1[0],b1[1],Z0],[b0[0],b0[1],Z0],[a0[0],a0[1],Z0]);  // dessous
+    quad([a0[0],a0[1],Z0],[a0[0],a0[1],Z1],[a1[0],a1[1],Z1],[a1[0],a1[1],Z0]);  // flanc int.
+    quad([b1[0],b1[1],Z0],[b1[0],b1[1],Z1],[b0[0],b0[1],Z1],[b0[0],b0[1],Z0]);  // flanc ext.
+  }
+  const cap=(p,inv)=>{ const [a,b]=p;
+    const A=[a[0],a[1],Z0],B=[b[0],b[1],Z0],C=[b[0],b[1],Z1],D=[a[0],a[1],Z1];
+    inv?quad(A,B,C,D):quad(D,C,B,A); };
+  cap(st[0],true); cap(st[N],false);                                            // bouts
+  return T;
+}
+$('demo').onclick=()=>run(demoSmiley());
 
 // ══ BOÎTE À OUTILS G-CODE ═══════════════════════════════════════════════════
 // Tout est local : on lit le texte, on repère les débuts de couche (marqueurs
@@ -1600,7 +1654,7 @@ function gDraw(n){
   const w=cv.clientWidth||600, h=cv.clientHeight||230, dpr=Math.min(2,devicePixelRatio||1);
   cv.width=w*dpr; cv.height=h*dpr; ctx.setTransform(dpr,0,0,dpr,0,0);
   ctx.clearRect(0,0,w,h);
-  ctx.fillStyle='#86868b'; ctx.font='11px '+getComputedStyle(document.body).fontFamily;
+  ctx.fillStyle='#6B5E3E'; ctx.font='11px '+getComputedStyle(document.body).fontFamily;
   if(!GC||!GC.layers[n-1]){ ctx.fillText('Aperçu de la couche (vue de dessus) — charge un G-code', 14, 22); return; }
   const L=GC.layers[n-1];
   const end=GC.layers[n]?GC.layers[n].idx:GC.lines.length;
@@ -1622,10 +1676,10 @@ function gDraw(n){
   const pad=18, sc=Math.min((w-2*pad)/Math.max(1e-6,mxx-mnx),(h-2*pad)/Math.max(1e-6,mxy-mny));
   const ox=(w-(mxx-mnx)*sc)/2, oy=(h-(mxy-mny)*sc)/2;
   const X=x=>ox+(x-mnx)*sc, Y=y=>h-(oy+(y-mny)*sc); // Y écran inversé
-  ctx.strokeStyle='#2997ff'; ctx.lineWidth=1.2; ctx.lineCap='round'; ctx.beginPath();
+  ctx.strokeStyle='#1846C8'; ctx.lineWidth=1.2; ctx.lineCap='round'; ctx.beginPath();
   for(let i=0;i<segs.length;i+=4){ ctx.moveTo(X(segs[i]),Y(segs[i+1])); ctx.lineTo(X(segs[i+2]),Y(segs[i+3])); }
   ctx.stroke();
-  ctx.fillStyle='#86868b';
+  ctx.fillStyle='#6B5E3E';
   ctx.fillText(`couche ${n}/${GC.layers.length} · Z ≈ ${L.z!=null?L.z.toFixed(2):'?'} mm · ${(mxx-mnx).toFixed(0)}×${(mxy-mny).toFixed(0)} mm`, 14, h-12);
 }
 
@@ -1633,7 +1687,11 @@ function gDraw(n){
 // Les segments d'extrusion sont accumulés DANS L'ORDRE DES COUCHES, avec le
 // compte de sommets au début de chaque couche : le slider ne rebâtit rien,
 // il déplace juste le drawRange des LineSegments (coût ~zéro).
-const GTYPE_COLORS={outer:0x2997ff,inner:0x64d2ff,infill:0xff9f0a,solid:0xffd60a,support:0xbf5af2,bridge:0xff453a,skirt:0x30d158,other:0x9a9aa0};
+// Couleurs des trajectoires calibrées pour le fond BEIGE : le jaune et le vert
+// clairs d'origine disparaissaient sur clair, et le gris « autre » se confondait
+// avec le fond. Assombris juste ce qu'il faut pour rester distinguables entre
+// eux ET lisibles sur beige.
+const GTYPE_COLORS={outer:0x1846C8,inner:0x00A0C6,infill:0xE07000,solid:0xC08A00,support:0x8A2BE2,bridge:0xD81E1E,skirt:0x008A3C,other:0x6B5E3E};
 const GT_RGB=Object.fromEntries(Object.entries(GTYPE_COLORS).map(([k,v])=>[k,[(v>>16&255)/255,(v>>8&255)/255,(v&255)/255]]));
 function gTypeKey(str){
   const t=str.toLowerCase();
@@ -1729,7 +1787,7 @@ function g3dRefresh(){
   if(G3D.posT.length){
     const gt=new THREE.BufferGeometry();
     gt.setAttribute('position',new THREE.Float32BufferAttribute(G3D.posT,3));
-    g3r.lineT=new THREE.LineSegments(gt,new THREE.LineBasicMaterial({color:0x6a6a6e,transparent:true,opacity:.35}));
+    g3r.lineT=new THREE.LineSegments(gt,new THREE.LineBasicMaterial({color:0x8A7A52,transparent:true,opacity:.45}));
     g3r.group.add(g3r.lineT);
   }
   $('g3dnote').textContent=G3D.truncatedLayer?`⚠️ fichier très lourd — aperçu limité aux ${G3D.truncatedLayer} premières couches`:'';
@@ -3643,7 +3701,7 @@ function slThickDraw(idx){
   const w=cv.clientWidth||600, h=240, dpr=Math.min(2,devicePixelRatio||1);
   cv.width=w*dpr; cv.height=h*dpr; ctx.setTransform(dpr,0,0,dpr,0,0);
   ctx.clearRect(0,0,w,h);
-  ctx.fillStyle='#86868b'; ctx.font='11px '+getComputedStyle(document.body).fontFamily;
+  ctx.fillStyle='#6B5E3E'; ctx.font='11px '+getComputedStyle(document.body).fontFamily;
   if(!TH){ ctx.fillText('Lance l\'analyse pour voir la carte d\'épaisseurs',14,22); return; }
   const info=slThickLayer(idx);
   const {loc,sub,px,seuil,roi}=TH;
@@ -3655,14 +3713,17 @@ function slThickDraw(idx){
     const k=j*iw+i, o=((ih-1-j)*iw+i)*4;                    // Y écran inversé
     if(!sub[k]){ D[o+3]=0; continue; }
     const t=loc[k]*px;
-    const c = t<seuil ? [255,69,58] : t<2*seuil ? [255,159,10] : [48,209,88];
+    // Ces trois valeurs doivent rester IDENTIQUES aux pastilles de la légende
+    // HTML juste au-dessus du canvas : une légende qui ne correspond pas aux
+    // couleurs dessinées est pire qu'aucune légende. Assombries pour le fond beige.
+    const c = t<seuil ? [216,30,30] : t<2*seuil ? [224,112,0] : [0,138,60];
     D[o]=c[0]; D[o+1]=c[1]; D[o+2]=c[2]; D[o+3]=235;
   }
   const off=document.createElement('canvas'); off.width=iw; off.height=ih;
   off.getContext('2d').putImageData(img,0,0);
   ctx.imageSmoothingEnabled=false;
   ctx.drawImage(off,ox,oy,iw*sc,ih*sc);
-  ctx.fillStyle='#86868b';
+  ctx.fillStyle='#6B5E3E';
   ctx.fillText(`coupe ${idx+1}/${TH.nL} · Z ≈ ${info.z.toFixed(1)} mm · seuil ${seuil.toFixed(2)} mm`,14,h-4);
 }
 
@@ -3799,13 +3860,16 @@ addEventListener('afterprint',()=>document.body.classList.remove('print-mat','pr
 window.PrintChecker={gParse,gPauseBlock,gApply,gEdits,gSafety,
   slice:(o={})=>slSlice(SCALED,{...slCfg(),...o}), slCfg,
   get _th(){ return TH; }, thickLayer:slThickLayer,
+  // L'équerre reste accessible : c'est la pièce sur laquelle tous les contrôles
+  // de non-régression ont été calibrés (14,0 cm² de supports, plaque de 6 mm).
+  demoEquerre:()=>run(demoTris()), demoSmiley:()=>run(demoSmiley()),
   passeport:ppManifest, canonique:nodusCanonical,
   get _3d(){ return {data:G3D, viewer:g3r}; },
   get _gcode(){ return SLGCODE; }};
 
 // init
 sizeView(); frame();
-run(demoTris());          // charge la démo au démarrage
+run(demoSmiley());        // charge la démo au démarrage
 gDraw(1);                 // placeholder de l'aperçu G-code
 slSync();                 // réglages dérivés + scripts start/end de la trancheuse
 dvRender();               // devis initial sur la démo
