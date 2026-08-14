@@ -1138,7 +1138,10 @@ const cam=new THREE.PerspectiveCamera(45,1,0.01,5000);
 // Vue par défaut EN PLONGÉE : rot.x négatif plaçait la caméra SOUS la pièce, on
 // n'en voyait que le revers. Pour de l'impression 3D, regarder d'au-dessus
 // montre le dessus et l'emprise au plateau, c'est-à-dire ce qui se décide.
-let curMesh=null, rot={x:0.95,y:0.35}, dist=3, drag=false, lx=0,ly=0;
+let curMesh=null, curOutline=null, rot={x:0.95,y:0.35}, dist=3, drag=false, lx=0,ly=0;
+// Rotation lente, coupée dès que l'utilisateur prend la main : une pièce qui
+// continue de tourner pendant qu'on l'examine est insupportable.
+let autoSpin=false, spin=0;
 function sizeView(){ const w=vel.clientWidth,h=vel.clientHeight; renderer.setSize(w,h); renderer.setPixelRatio(Math.min(2,devicePixelRatio)); cam.aspect=w/h; cam.updateProjectionMatrix(); }
 renderer.domElement.style.cursor='grab'; vel.appendChild(renderer.domElement);
 scene.add(new THREE.HemisphereLight(0xffffff,0x223344,1.5));
@@ -1146,26 +1149,43 @@ scene.add(new THREE.HemisphereLight(0xffffff,0x223344,1.5));
 // la scène — sinon la moitié des angles de rotation regarde une face non éclairée.
 const dl=new THREE.DirectionalLight(0xffffff,1.4); scene.add(dl);
 function frame(){ requestAnimationFrame(frame);
+  if(autoSpin&&curMesh){
+    // rotation.z = axe de la face : le smiley tourne dans son propre plan,
+    // quelle que soit l'inclinaison de la vue.
+    spin+=0.006; curMesh.rotation.z=spin; if(curOutline) curOutline.rotation.z=spin;
+  }
   const r=dist; cam.position.set(Math.sin(rot.y)*Math.cos(rot.x)*r, Math.sin(rot.x)*r, Math.cos(rot.y)*Math.cos(rot.x)*r);
   cam.lookAt(0,0,0); dl.position.copy(cam.position);
   renderer.render(scene,cam); }
 addEventListener('resize',sizeView);
-renderer.domElement.addEventListener('pointerdown',e=>{drag=true;lx=e.clientX;ly=e.clientY;renderer.domElement.style.cursor='grabbing';});
+renderer.domElement.addEventListener('pointerdown',e=>{drag=true;autoSpin=false;lx=e.clientX;ly=e.clientY;renderer.domElement.style.cursor='grabbing';});
 addEventListener('pointerup',()=>{drag=false;renderer.domElement.style.cursor='grab';});
 addEventListener('pointermove',e=>{ if(!drag)return; rot.y+=(e.clientX-lx)*.01; rot.x=Math.max(-1.5,Math.min(1.5,rot.x+(e.clientY-ly)*.01)); lx=e.clientX;ly=e.clientY; });
 renderer.domElement.addEventListener('wheel',e=>{e.preventDefault(); dist=Math.max(0.6,Math.min(8,dist*(1+Math.sign(e.deltaY)*.1)));},{passive:false});
 
-function showMesh(tris){
-  if(curMesh){scene.remove(curMesh); curMesh.geometry.dispose();}
+function showMesh(tris, cols){
+  for(const m of [curMesh,curOutline]) if(m){ scene.remove(m); m.geometry.dispose(); m.material.dispose(); }
+  curMesh=curOutline=null;
   const pos=[]; for(const t of tris) for(const v of t) pos.push(v[0],v[1],v[2]);
   const geo=new THREE.BufferGeometry(); geo.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
+  if(cols&&cols.length===pos.length) geo.setAttribute('color',new THREE.Float32BufferAttribute(cols,3));
   geo.computeVertexNormals(); geo.computeBoundingSphere();
   // centre + normalise l'échelle d'affichage
   const c=geo.boundingSphere.center, r=geo.boundingSphere.radius||1;
   geo.translate(-c.x,-c.y,-c.z); geo.scale(1/r,1/r,1/r);
-  const mat=new THREE.MeshStandardMaterial({color:0xFFC400,metalness:.05,roughness:.62,flatShading:true});
+  const mat=new THREE.MeshStandardMaterial({color:cols?0xffffff:0xFFC400,vertexColors:!!cols,
+    metalness:.05,roughness:.62,flatShading:true});
   curMesh=new THREE.Mesh(geo,mat); curMesh.rotation.x=-Math.PI/2; // Z-up (STL) → Y-up (affichage)
-  scene.add(curMesh); dist=3;
+  scene.add(curMesh);
+  // Contour noir par COQUE INVERSÉE : la même géométrie, un peu dilatée, dont
+  // on ne rend que les faces arrière. Là où la silhouette dépasse, on voit le
+  // noir ; ailleurs la pièce le recouvre. Aucune passe de post-traitement, donc
+  // rien à maintenir côté rendu.
+  const geoO=geo.clone();
+  curOutline=new THREE.Mesh(geoO,new THREE.MeshBasicMaterial({color:0x111111,side:THREE.BackSide}));
+  curOutline.rotation.x=-Math.PI/2; curOutline.scale.setScalar(1.035);
+  scene.add(curOutline);
+  dist=3;
 }
 
 // ── Pipeline : charger → analyser → afficher ────────────────────────────────
@@ -1181,13 +1201,13 @@ function scaleTris(tris, factor){
   if(factor===1) return tris;
   return tris.map(t=>t.map(p=>[p[0]*factor,p[1]*factor,p[2]*factor]));
 }
-function run(tris){
+function run(tris, cols){
   if(!tris||tris.length<1){ alert("Fichier illisible ou vide (aucun triangle exploitable)."); return; }
   RAW=tris; MH=null;
   TH=null; THMIN=null;                       // l'analyse d'épaisseurs porte sur l'ancien modèle
   $('th-view').style.display='none';
   $('th-res').innerHTML='Mesure l\'épaisseur <b>locale</b> de la matière, partout dans la pièce — une paroi de 0,3 mm au milieu d\'un gros volume ne se voit sur aucune cote d\'encombrement.';
-  showMesh(tris); update();
+  showMesh(tris, cols); update();
 }
 function update(){
   if(!RAW) return;
@@ -1268,6 +1288,7 @@ $('export').onclick=()=>{ if(!G) return; buildReport(); window.print(); };
 async function loadFile(f){
   if(!f) return;
   curFileName=f.name.replace(/\.[^.]+$/,'');
+  autoSpin=false; rot.x=0.95; rot.y=0.35;   // vraie pièce : vue trois quarts, immobile
   const dz=$('drop'); const prevText=dz.querySelector('.t').textContent;
   dz.querySelector('.t').textContent='Lecture en cours…';
   try{
@@ -1330,6 +1351,7 @@ function demoSmiley(){
   // orientées vers le bas — de faux porte-à-faux, invisibles à l'impression
   // mais bien réels pour un contrôle qui ne lit que des normales.
   cyl(0,0, 0,6, 30, 72);                    // galette Ø60 × 6 mm
+  const nDisque=T.length;                   // frontière jaune / noir
   cyl(-11,9, 0,9, 4.5, 28);                 // œil gauche
   cyl( 11,9, 0,9, 4.5, 28);                 // œil droit
   // Sourire : UN seul solide balayé le long de l'arc, pas une chaîne de
@@ -1353,9 +1375,26 @@ function demoSmiley(){
     const A=[a[0],a[1],Z0],B=[b[0],b[1],Z0],C=[b[0],b[1],Z1],D=[a[0],a[1],Z1];
     inv?quad(A,B,C,D):quad(D,C,B,A); };
   cap(st[0],true); cap(st[N],false);                                            // bouts
-  return T;
+  // Couleurs par sommet : galette jaune, yeux et sourire noirs. On les affecte
+  // par PLAGES de triangles, dans l'ordre où les primitives ont été empilées —
+  // le maillage n'a qu'un seul matériau, la couleur voyage avec la géométrie.
+  const JAUNE=[1,0.769,0], NOIR=[0.067,0.067,0.067];
+  const cols=new Float32Array(T.length*9);
+  for(let i=0;i<T.length;i++){
+    const c=i<nDisque?JAUNE:NOIR;
+    for(let v=0;v<3;v++){ cols[i*9+v*3]=c[0]; cols[i*9+v*3+1]=c[1]; cols[i*9+v*3+2]=c[2]; }
+  }
+  return {tris:T, cols};
 }
-$('demo').onclick=()=>run(demoSmiley());
+// Vue de FACE pour le smiley : sa face regarde le +Z du modèle, qui devient le
+// haut de la scène — la caméra doit donc être au zénith. Un vrai fichier, lui,
+// garde la vue en plongée trois quarts, plus parlante pour une pièce.
+function chargerSmiley(){
+  const d=demoSmiley();
+  run(d.tris, d.cols);
+  rot.x=1.5; rot.y=0; spin=0; autoSpin=true;
+}
+$('demo').onclick=chargerSmiley;
 
 // ══ BOÎTE À OUTILS G-CODE ═══════════════════════════════════════════════════
 // Tout est local : on lit le texte, on repère les débuts de couche (marqueurs
@@ -3862,14 +3901,15 @@ window.PrintChecker={gParse,gPauseBlock,gApply,gEdits,gSafety,
   get _th(){ return TH; }, thickLayer:slThickLayer,
   // L'équerre reste accessible : c'est la pièce sur laquelle tous les contrôles
   // de non-régression ont été calibrés (14,0 cm² de supports, plaque de 6 mm).
-  demoEquerre:()=>run(demoTris()), demoSmiley:()=>run(demoSmiley()),
+  demoEquerre:()=>run(demoTris()), demoSmiley:chargerSmiley,
+  get _vue(){ return {spin, autoSpin, rot:{...rot}, contour:!!curOutline}; },
   passeport:ppManifest, canonique:nodusCanonical,
   get _3d(){ return {data:G3D, viewer:g3r}; },
   get _gcode(){ return SLGCODE; }};
 
 // init
 sizeView(); frame();
-run(demoSmiley());        // charge la démo au démarrage
+chargerSmiley();          // charge la démo au démarrage
 gDraw(1);                 // placeholder de l'aperçu G-code
 slSync();                 // réglages dérivés + scripts start/end de la trancheuse
 dvRender();               // devis initial sur la démo
