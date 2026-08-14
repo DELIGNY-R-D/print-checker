@@ -1174,7 +1174,7 @@ function frame(){ requestAnimationFrame(frame);
   if(autoSpin&&curMesh){
     // rotation.z = axe de la face : le smiley tourne dans son propre plan,
     // quelle que soit l'inclinaison de la vue.
-    spin+=0.006; curMesh.rotation.z=spin; if(curOutline) curOutline.rotation.z=spin;
+    spin+=0.003; curMesh.rotation.z=spin; if(curOutline) curOutline.rotation.z=spin;
   }
   const r=dist; cam.position.set(Math.sin(rot.y)*Math.cos(rot.x)*r, Math.sin(rot.x)*r, Math.cos(rot.y)*Math.cos(rot.x)*r);
   cam.lookAt(0,0,0); dl.position.copy(cam.position);
