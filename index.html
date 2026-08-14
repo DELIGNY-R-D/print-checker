@@ -388,6 +388,28 @@ footer .disc{max-width:660px;margin:0 auto 10px;}
       </div>
 
       <div class="thbox">
+        <div class="gplan" style="margin-top:0"><b>Atelier du modèle</b> — transformer, découper, fusionner. Chaque action remplace la pièce analysée ici ; le fichier d'origine n'est jamais modifié.</div>
+        <div class="oprow" style="margin-top:10px">
+          échelle <input type="number" class="gtxt" id="at-scale" value="1" min="0.01" max="100" step="0.1" style="width:70px">
+          <button class="btn" id="at-scale-go">Appliquer</button>
+          · rotation <select id="at-axis" style="width:auto"><option value="x">X</option><option value="y">Y</option><option value="z">Z</option></select>
+          <input type="number" class="gtxt" id="at-deg" value="90" step="15" style="width:70px">°
+          <button class="btn" id="at-rot-go">Tourner</button>
+        </div>
+        <div class="oprow" style="margin-top:10px">
+          couper selon <select id="at-caxis" style="width:auto"><option value="z">Z</option><option value="x">X</option><option value="y">Y</option></select>
+          à <input type="number" class="gtxt" id="at-cpos" value="0" step="1" style="width:80px"> mm
+          <button class="btn" id="at-cut-go">✂︎ Couper en deux</button>
+          <button class="btn" id="at-fuse-go">⛓ Fusionner en un seul corps</button>
+        </div>
+        <div class="gplan" id="at-out" style="display:none"></div>
+        <div class="row-btn" style="justify-content:flex-start;margin-top:10px">
+          <button class="btn export" id="at-dl" disabled>⬇︎ Télécharger le STL modifié</button>
+          <button class="btn" id="at-undo">↩︎ Revenir au fichier d'origine</button>
+        </div>
+      </div>
+
+      <div class="thbox">
         <div class="row-btn" style="justify-content:flex-start;margin-top:0">
           <button class="btn" id="or-go">🔄 Chercher une meilleure orientation</button>
         </div>
@@ -2927,6 +2949,201 @@ $('rx-use').onclick=()=>{
   MODELHASH=null;
   $('unit').value='mm';           // les triangles réparés sont déjà à l'échelle réelle
   run(RXTRIS);
+};
+
+// ══ ATELIER DU MODÈLE : transformer, découper, fusionner ════════════════════
+// Trois opérations qui manquaient et qui bloquaient des cas réels.
+
+// ── 1. Transformations ──────────────────────────────────────────────────────
+// Échelle, rotation sur un axe, autour du centre de la pièce. Pur calcul.
+function meshTransform(tris,{scale=1,axis=null,deg=0}){
+  let mn=[1e9,1e9,1e9], mx=[-1e9,-1e9,-1e9];
+  for(const t of tris) for(const p of t) for(let k=0;k<3;k++){ if(p[k]<mn[k])mn[k]=p[k]; if(p[k]>mx[k])mx[k]=p[k]; }
+  const c=[(mn[0]+mx[0])/2,(mn[1]+mx[1])/2,(mn[2]+mx[2])/2];
+  const a=deg*Math.PI/180, co=Math.cos(a), si=Math.sin(a);
+  const rot=p=>{
+    const x=p[0]-c[0], y=p[1]-c[1], z=p[2]-c[2];
+    let q;
+    if(axis==='x') q=[x, y*co-z*si, y*si+z*co];
+    else if(axis==='y') q=[x*co+z*si, y, -x*si+z*co];
+    else if(axis==='z') q=[x*co-y*si, x*si+y*co, z];
+    else q=[x,y,z];
+    return [q[0]*scale+c[0], q[1]*scale+c[1], q[2]*scale+c[2]];
+  };
+  return tris.map(t=>t.map(rot));
+}
+
+// ── 2. Découpe par un plan ──────────────────────────────────────────────────
+// Chaque triangle traversé est retaillé exactement (1 ou 2 morceaux selon le
+// côté), puis la section ouverte est refermée : les arêtes de coupe se chaînent
+// en boucles et se remplissent en éventail. Sans ce bouchage, on obtiendrait
+// deux coquilles ouvertes, imprimables nulle part.
+function meshCut(tris, axis, pos){
+  const K={x:0,y:1,z:2}[axis];
+  const A=[], B=[], coupeA=[], coupeB=[];
+  const inter=(p,q)=>{ const t=(pos-p[K])/(q[K]-p[K]);
+    return [p[0]+(q[0]-p[0])*t, p[1]+(q[1]-p[1])*t, p[2]+(q[2]-p[2])*t]; };
+  for(const t of tris){
+    const s=t.map(p=>p[K]>=pos);
+    const n=s.filter(Boolean).length;
+    if(n===3){ A.push(t); continue; }
+    if(n===0){ B.push(t); continue; }
+    // un sommet seul d'un côté : le repère, puis découpe en 1 + 2 triangles
+    const i=(n===1)?s.indexOf(true):s.indexOf(false);
+    const p0=t[i], p1=t[(i+1)%3], p2=t[(i+2)%3];
+    const a=inter(p0,p1), b=inter(p0,p2);
+    const seul=[[p0,a,b]], reste=[[a,p1,p2],[a,p2,b]];
+    if(n===1){ A.push(...seul); B.push(...reste); coupeA.push([a,b]); coupeB.push([b,a]); }
+    else     { B.push(...seul); A.push(...reste); coupeB.push([a,b]); coupeA.push([b,a]); }
+  }
+  const boucher=(faces,aretes)=>{
+    if(!aretes.length) return;
+    const cle=p=>p.map(v=>Math.round(v*1000)).join(',');
+    const suiv=new Map();
+    for(const [a,b] of aretes) suiv.set(cle(a),{a,b});
+    const vus=new Set();
+    for(const [k0,e0] of suiv){
+      if(vus.has(k0)) continue;
+      const boucle=[]; let cur=e0, garde=0;
+      while(cur&&!vus.has(cle(cur.a))&&garde++<20000){
+        vus.add(cle(cur.a)); boucle.push(cur.a); cur=suiv.get(cle(cur.b));
+      }
+      if(boucle.length<3) continue;
+      const g=[0,0,0];
+      for(const p of boucle) for(let k=0;k<3;k++) g[k]+=p[k]/boucle.length;
+      for(let i=0;i<boucle.length;i++) faces.push([boucle[i],boucle[(i+1)%boucle.length],g]);
+    }
+  };
+  boucher(A,coupeA); boucher(B,coupeB);
+  return {a:A, b:B};
+}
+
+// ── 3. Fusion en un seul corps ──────────────────────────────────────────────
+// Union booléenne par la voie RASTER, pas analytique. On rastérise la pièce
+// couche par couche avec la règle nonzero — laquelle réalise DÉJÀ l'union de
+// toutes les coques, y compris quand elles s'interpénètrent sans partager le
+// moindre sommet, ce qu'aucune soudure ne sait faire — puis on re-maille la
+// grille obtenue. C'est approximatif au pas de grille, et ça ne casse jamais :
+// le même compromis que la trancheuse, pour la même raison.
+// Le re-maillage utilise les « surface nets » : un sommet par cellule traversée,
+// placé au barycentre des coupures d'arêtes, puis un quad par arête de la
+// grille qui change de signe. Pas de table à 256 cas comme les marching cubes,
+// donc rien à recopier de travers.
+function meshFuse(tris, opt){
+  const P=slPrepare(tris,[0,0,0]);
+  const sx=P.box.x1-P.box.x0, sy=P.box.y1-P.box.y0, hz=P.size[2];
+  let p=opt.pitch||Math.max(sx,sy,hz)/160;
+  const MAXVOX=9e6;
+  const dims=()=>[Math.ceil(sx/p)+4, Math.ceil(sy/p)+4, Math.ceil(hz/p)+4];
+  while(dims().reduce((a,b)=>a*b,1)>MAXVOX) p*=1.22;
+  const [NX,NY,NZ]=dims();
+  const x0=P.box.x0-2*p, y0=P.box.y0-2*p, z0=-2*p;
+  const R={W:NX,H:NY,px:p,x0,y0,cnt:new Int32Array(NY),off:new Int32Array(NY),
+           cx:new Float64Array(1024),cd:new Int8Array(1024)};
+  const vox=new Uint8Array(NX*NY*NZ), masque=new Uint8Array(NX*NY), bb=new Int32Array(5);
+  const seg=new Float64Array(4);
+  let ptr=0, actifs=[];
+  for(let k=0;k<NZ;k++){
+    const z=z0+(k+0.5)*p;
+    while(ptr<P.n && P.zlo[P.ord[ptr]]<=z) actifs.push(P.ord[ptr++]);
+    if(actifs.length) actifs=actifs.filter(t=>P.zhi[t]>=z);
+    const segs=[];
+    for(const t of actifs) if(slTriSeg(P,t,z,seg)) segs.push(seg[0],seg[1],seg[2],seg[3]);
+    slFill(segs,R,masque,bb);
+    vox.set(masque,k*NX*NY);
+  }
+  // surface nets
+  const dedans=(i,j,k)=>(i<0||j<0||k<0||i>=NX||j>=NY||k>=NZ)?0:vox[k*NX*NY+j*NX+i];
+  const idx=new Int32Array(NX*NY*NZ).fill(-1);
+  const V=[];
+  const COINS=[[0,0,0],[1,0,0],[1,1,0],[0,1,0],[0,0,1],[1,0,1],[1,1,1],[0,1,1]];
+  const ARETES=[[0,1],[1,2],[3,2],[0,3],[4,5],[5,6],[7,6],[4,7],[0,4],[1,5],[2,6],[3,7]];
+  for(let k=0;k<NZ-1;k++) for(let j=0;j<NY-1;j++) for(let i=0;i<NX-1;i++){
+    const s=COINS.map(([a,b,c])=>dedans(i+a,j+b,k+c));
+    const somme=s.reduce((a,b)=>a+b,0);
+    if(somme===0||somme===8) continue;
+    let cx=0,cy=0,cz=0,n=0;
+    for(const [a,b] of ARETES) if(s[a]!==s[b]){
+      cx+=(COINS[a][0]+COINS[b][0])/2; cy+=(COINS[a][1]+COINS[b][1])/2; cz+=(COINS[a][2]+COINS[b][2])/2; n++;
+    }
+    idx[k*NX*NY+j*NX+i]=V.length;
+    V.push([x0+(i+cx/n+0.5)*p, y0+(j+cy/n+0.5)*p, z0+(k+cz/n+0.5)*p]);
+  }
+  const F=[];
+  const cellule=(i,j,k)=>(i<0||j<0||k<0||i>=NX-1||j>=NY-1||k>=NZ-1)?-1:idx[k*NX*NY+j*NX+i];
+  const quad=(a,b,c,d,inv)=>{ if(a<0||b<0||c<0||d<0) return;
+    if(inv){ F.push([V[a],V[c],V[b]]); F.push([V[a],V[d],V[c]]); }
+    else   { F.push([V[a],V[b],V[c]]); F.push([V[a],V[c],V[d]]); } };
+  for(let k=0;k<NZ;k++) for(let j=0;j<NY;j++) for(let i=0;i<NX;i++){
+    const ici=dedans(i,j,k);
+    if(dedans(i+1,j,k)!==ici) quad(cellule(i,j-1,k-1),cellule(i,j,k-1),cellule(i,j,k),cellule(i,j-1,k),!ici);
+    if(dedans(i,j+1,k)!==ici) quad(cellule(i-1,j,k-1),cellule(i-1,j,k),cellule(i,j,k),cellule(i,j,k-1),!ici);
+    if(dedans(i,j,k+1)!==ici) quad(cellule(i-1,j-1,k),cellule(i,j-1,k),cellule(i,j,k),cellule(i-1,j,k),!ici);
+  }
+  return {tris:F, pitch:p, grille:[NX,NY,NZ]};
+}
+
+// ── UI de l'atelier ─────────────────────────────────────────────────────────
+let ORIGINE=null;                       // pour revenir en arrière
+function atAppliquer(tris, texte){
+  if(!ORIGINE) ORIGINE=RAW;
+  MODELHASH=null;                        // la pièce n'est plus le fichier déposé
+  const f=UNIT_FACTORS[$('unit').value]||1;
+  // Les opérations travaillent en millimètres réels : on repasse dans l'unité
+  // du fichier pour que le facteur appliqué ensuite par update() ne double pas.
+  run(f===1?tris:tris.map(t=>t.map(p=>[p[0]/f,p[1]/f,p[2]/f])));
+  const o=$('at-out'); o.style.display='block'; o.innerHTML=texte;
+  const d=$('at-dl'); d.disabled=false; d.classList.remove('export');
+}
+$('at-scale-go').onclick=()=>{
+  if(!SCALED) return;
+  const s=parseFloat($('at-scale').value);
+  if(!(s>0)){ alert('Échelle invalide.'); return; }
+  const t=meshTransform(SCALED,{scale:s});
+  atAppliquer(t,`Échelle × ${s} appliquée.`);
+};
+$('at-rot-go').onclick=()=>{
+  if(!SCALED) return;
+  const d=parseFloat($('at-deg').value)||0, a=$('at-axis').value;
+  atAppliquer(meshTransform(SCALED,{axis:a,deg:d}),`Rotation de ${d}° autour de ${a.toUpperCase()}.`);
+};
+$('at-cut-go').onclick=()=>{
+  if(!SCALED) return;
+  const ax=$('at-caxis').value, pos=parseFloat($('at-cpos').value)||0;
+  const r=meshCut(SCALED,ax,pos);
+  if(!r.a.length||!r.b.length){ alert(`Le plan ${ax.toUpperCase()} = ${pos} ne traverse pas la pièce.`); return; }
+  AT_AUTRE=r.b;
+  atAppliquer(r.a,`Découpe en ${ax.toUpperCase()} = ${pos} mm. La <b>moitié supérieure</b> est analysée ici (${r.a.length} triangles). `+
+    `L'autre moitié (${r.b.length} triangles) se télécharge séparément.`+
+    `<br><button class="btn" id="at-dl2" style="margin-top:8px">⬇︎ Télécharger l'autre moitié</button>`);
+  $('at-dl2').onclick=()=>atTelecharger(AT_AUTRE,'_moitie2');
+};
+let AT_AUTRE=null;
+$('at-fuse-go').onclick=()=>{
+  if(!SCALED) return;
+  const av=meshHealth(SCALED);
+  const t0=performance.now();
+  const r=meshFuse(SCALED,{});
+  if(!r.tris.length){ alert('Fusion impossible : aucune matière détectée.'); return; }
+  const ap=meshHealth(r.tris);
+  atAppliquer(r.tris,
+    `<b>Fusion en un seul corps</b> — ${av.shells} morceaux → <b style="color:${ap.shells===1?'var(--green)':'var(--amber)'}">${ap.shells}</b>`+
+    ` · ${r.tris.length} triangles · grille ${r.grille.join('×')} au pas de ${r.pitch.toFixed(2)} mm · ${((performance.now()-t0)/1000).toFixed(1)} s<br>`+
+    `<span style="color:var(--dim2)">Union obtenue par rastérisation : elle réunit des volumes qui s'interpénètrent sans partager de sommets — ce qu'aucune soudure ne sait faire. `+
+    `Le prix est la résolution : les détails plus fins que ${r.pitch.toFixed(2)} mm sont arrondis. Vérifie les cotes avant d'imprimer.</span>`);
+};
+function atTelecharger(tris,suffixe){
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([trisToSTL(tris)],{type:'model/stl'}));
+  a.download=(curFileName||'piece').replace(/[^\w\-]+/g,'_')+(suffixe||'_modifie')+'.stl';
+  a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),5000);
+}
+$('at-dl').onclick=()=>{ if(SCALED) atTelecharger(SCALED); };
+$('at-undo').onclick=()=>{
+  if(!ORIGINE){ alert('Aucune modification à annuler.'); return; }
+  run(ORIGINE); ORIGINE=null; AT_AUTRE=null;
+  $('at-out').style.display='none';
+  const d=$('at-dl'); d.disabled=true; d.classList.add('export');
 };
 
 // ══ PASSEPORT DE FABRICATION (compatible NODUS, sans compte ni réseau) ══════
