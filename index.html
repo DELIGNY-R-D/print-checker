@@ -1174,7 +1174,7 @@ function frame(){ requestAnimationFrame(frame);
   if(autoSpin&&curMesh){
     // rotation.z = axe de la face : le smiley tourne dans son propre plan,
     // quelle que soit l'inclinaison de la vue.
-    spin+=0.003; curMesh.rotation.z=spin; if(curOutline) curOutline.rotation.z=spin;
+    spin+=0.003; curMesh.rotation.z=spin;
   }
   const r=dist; cam.position.set(Math.sin(rot.y)*Math.cos(rot.x)*r, Math.sin(rot.x)*r, Math.cos(rot.y)*Math.cos(rot.x)*r);
   cam.lookAt(0,0,0); dl.position.copy(cam.position);
@@ -1199,14 +1199,6 @@ function showMesh(tris, cols){
     metalness:.05,roughness:.62,flatShading:true});
   curMesh=new THREE.Mesh(geo,mat); curMesh.rotation.x=-Math.PI/2; // Z-up (STL) → Y-up (affichage)
   scene.add(curMesh);
-  // Contour noir par COQUE INVERSÉE : la même géométrie, un peu dilatée, dont
-  // on ne rend que les faces arrière. Là où la silhouette dépasse, on voit le
-  // noir ; ailleurs la pièce le recouvre. Aucune passe de post-traitement, donc
-  // rien à maintenir côté rendu.
-  const geoO=geo.clone();
-  curOutline=new THREE.Mesh(geoO,new THREE.MeshBasicMaterial({color:0x111111,side:THREE.BackSide}));
-  curOutline.rotation.x=-Math.PI/2; curOutline.scale.setScalar(1.035);
-  scene.add(curOutline);
   dist=3;
 }
 
@@ -1397,6 +1389,24 @@ function demoSmiley(){
     const A=[a[0],a[1],Z0],B=[b[0],b[1],Z0],C=[b[0],b[1],Z1],D=[a[0],a[1],Z1];
     inv?quad(A,B,C,D):quad(D,C,B,A); };
   cap(st[0],true); cap(st[N],false);                                            // bouts
+  // Bague plate qui ceinture la galette : le contour n'est plus un artifice de
+  // rendu mais de la MATIÈRE. Rayon intérieur volontairement sous les 30 mm du
+  // disque pour qu'ils s'interpénètrent — ils forment ainsi un seul volume à
+  // l'impression, et la fusion de l'atelier les réunira proprement en un corps.
+  const anneau=(z0,z1,rIn,rOut,n)=>{
+    for(let i=0;i<n;i++){
+      const a0=i/n*2*Math.PI, a1=(i+1)/n*2*Math.PI;
+      const P=(r,a,z)=>[r*Math.cos(a), r*Math.sin(a), z];
+      const qi=(p,q,r,s)=>{ T.push([p,q,r]); T.push([p,r,s]); };
+      // Sens de parcours : vu du dessus, la face du dessus doit tourner dans le
+      // sens trigonométrique (normale vers +Z) et celle du dessous à l'inverse.
+      qi(P(rOut,a0,z1),P(rOut,a1,z1),P(rIn,a1,z1),P(rIn,a0,z1));   // dessus
+      qi(P(rIn,a0,z0),P(rIn,a1,z0),P(rOut,a1,z0),P(rOut,a0,z0));   // dessous
+      qi(P(rOut,a0,z0),P(rOut,a1,z0),P(rOut,a1,z1),P(rOut,a0,z1)); // flanc ext.
+      qi(P(rIn,a1,z0),P(rIn,a0,z0),P(rIn,a0,z1),P(rIn,a1,z1));     // flanc int.
+    }
+  };
+  anneau(0, 2.5, 29, 34, 72);
   // Couleurs par sommet : galette jaune, yeux et sourire noirs. On les affecte
   // par PLAGES de triangles, dans l'ordre où les primitives ont été empilées —
   // le maillage n'a qu'un seul matériau, la couleur voyage avec la géométrie.
