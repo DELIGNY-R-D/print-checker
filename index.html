@@ -315,6 +315,21 @@ footer .disc{max-width:640px;margin:0 auto 10px;}
         </div>
       </div>
 
+      <div class="thbox" id="rx-box" style="display:none">
+        <div class="gplan" id="rx-plan" style="margin-top:0"></div>
+        <div class="oprow" style="margin-top:10px">
+          <label class="trv"><input type="checkbox" id="rx-trous" checked> boucher les trous</label>
+          <label class="trv"><input type="checkbox" id="rx-coques"> retirer les fragments détachés <b style="color:var(--amber)">(destructif)</b></label>
+          tolérance de soudure <input type="number" class="gtxt" id="rx-tol" value="0.001" min="0.0001" max="0.5" step="0.001" style="width:80px">
+        </div>
+        <div class="row-btn" style="justify-content:flex-start;margin-top:10px">
+          <button class="btn pri" id="rx-go">🔧 Réparer le maillage</button>
+          <button class="btn export" id="rx-dl" disabled>⬇︎ Télécharger le STL réparé</button>
+          <button class="btn" id="rx-use">Analyser le réparé ici</button>
+        </div>
+        <div class="gplan" id="rx-res" style="display:none"></div>
+      </div>
+
       <div class="thbox">
         <div class="row-btn" style="justify-content:flex-start;margin-top:0">
           <button class="btn" id="or-go">🔄 Chercher une meilleure orientation</button>
@@ -1040,8 +1055,15 @@ function meshRows(m){
   R.push([m.score>=90?'✅':'⚠️', m.score>=90?'ok':'warn',
     `Santé du maillage : ${m.score}/100${m.watertight?' — étanche':''}`,
     m.score>=90
-      ? (m.shells>1?`Maillage propre, ${m.shells} coques distinctes (normal pour un assemblage).`:'Étanche, orienté, une seule coque — prêt à trancher.')
-      : 'Répare avant de trancher (fonction « Réparer » de PrusaSlicer/Orca, ou 3D Builder) — un maillage douteux produit un tranchage imprévisible.']);
+      ? (m.shells>1?`Chaque morceau est fermé, mais il y en a ${m.shells} — voir la ligne suivante.`:'Étanche, orienté, une seule coque — prêt à trancher.')
+      : 'Répare avant de trancher — un maillage douteux produit un tranchage imprévisible.']);
+  // Un maillage en plusieurs morceaux peut être parfaitement « étanche » et
+  // pourtant faux : chaque morceau est fermé de son côté. C'est exactement à
+  // quoi ressemble une dent d'encliquetage qui ne touche plus sa paroi, et
+  // aucun score d'étanchéité ne le voit. D'où une ligne dédiée.
+  if(m.shells>1)
+    R.push(['⚠️','warn',`${m.shells} morceaux disjoints dans le fichier`,
+      `Si la pièce doit être d'un seul tenant, un morceau s'est détaché — une nervure ou une dent qui ne rejoint plus sa paroi s'imprimera en l'air, ou pas du tout. Si les morceaux se touchent à quelques microns près, la soudure du réparateur les recolle ; s'ils se chevauchent sans partager de sommets, c'est une union booléenne à refaire en CAO, qu'aucun réparateur de maillage ne peut inventer. Si c'est un assemblage voulu de plusieurs pièces, ignore cette ligne.`]);
   const pl=n=>n>1?'s':'';
   if(m.open)   R.push(['⚠️','warn',`${m.open} arête${pl(m.open)} ouverte${pl(m.open)} (trous dans la surface)`,'La surface n\'est pas fermée : le slicer devra deviner où est l\'intérieur.']);
   if(m.nm)     R.push(['⚠️','warn',`${m.nm} arête${pl(m.nm)} non-manifold`,'Plus de 2 faces partagent la même arête — géométrie ambiguë.']);
@@ -1132,6 +1154,7 @@ function update(){
   }
   const R=[...(MH?meshRows(MH):[]), ...risks(G,est)];
   LASTRISKS=R;   // consignés tels quels dans le passeport de fabrication
+  rxSync();      // proposer la réparation si le maillage est cassé
   $('risks').innerHTML=R.map(([ic,cl,t,d])=>`<div class="risk ${cl}"><div class="ic">${ic}</div><div class="body"><b>${t}</b><div class="d">${d}</div></div></div>`).join('');
   const exp=$('export'); exp.disabled=false; exp.classList.add('ready');
   slSync();   // la trancheuse dépend du modèle courant (cotes, volume, surplombs) : un
@@ -2545,6 +2568,211 @@ $('sl-dl').onclick=()=>{
   a.href=URL.createObjectURL(new Blob([SLGCODE],{type:'text/x-gcode'}));
   a.download=SLNAME+'.gcode';
   a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),5000);
+};
+
+// ══ RÉPARATION DU MAILLAGE ══════════════════════════════════════════════════
+// Réparation EXPLICITE et traçable, jamais silencieuse : on annonce ce qu'on va
+// faire, on le fait, on dit ce qui a changé, et on rend un fichier. Un outil de
+// contrôle qui corrige en douce masquerait le défaut qu'il existe pour révéler.
+// L'ordre des opérations n'est pas libre : souder d'abord (sinon deux sommets
+// distants d'un micron font croire à un trou), nettoyer ensuite, puis orienter,
+// et seulement à la fin boucher — un trou n'a de sens qu'une fois les faux
+// trous supprimés.
+function meshRepair(tris, opt){
+  const log={soudes:0, degeneres:0, doublons:0, reorientes:0, trous:0, tri_ajoutes:0,
+             coques_retirees:0, faces_retirees:0};
+  const tol=opt.tol||0.001;
+  // ── 1. soudure des sommets quasi-coïncidents ──────────────────────────────
+  const q=v=>Math.round(v/tol);
+  const map=new Map(), V=[], idx=[];
+  let brut=0;
+  for(const t of tris) for(const p of t){
+    brut++;
+    const k=q(p[0])+','+q(p[1])+','+q(p[2]);
+    let i=map.get(k);
+    if(i===undefined){ i=V.length; V.push([p[0],p[1],p[2]]); map.set(k,i); }
+    idx.push(i);
+  }
+  log.soudes=brut-V.length;
+  // ── 2. dégénérés et doublons ──────────────────────────────────────────────
+  let F=[]; const vus=new Set();
+  for(let f=0;f<idx.length;f+=3){
+    const a=idx[f],b=idx[f+1],c=idx[f+2];
+    if(a===b||b===c||a===c){ log.degeneres++; continue; }
+    const A=V[a],B=V[b],C=V[c];
+    const ux=B[0]-A[0],uy=B[1]-A[1],uz=B[2]-A[2], vx=C[0]-A[0],vy=C[1]-A[1],vz=C[2]-A[2];
+    const nx=uy*vz-uz*vy, ny=uz*vx-ux*vz, nz=ux*vy-uy*vx;
+    if(Math.hypot(nx,ny,nz)/2<1e-9){ log.degeneres++; continue; }
+    const s=[a,b,c].slice().sort((x,y)=>x-y).join(',');
+    if(vus.has(s)){ log.doublons++; continue; }
+    vus.add(s); F.push([a,b,c]);
+  }
+  // ── 3. orientation cohérente ──────────────────────────────────────────────
+  // On propage l'orientation de proche en proche : deux faces qui partagent une
+  // arête doivent la parcourir en sens INVERSE. Puis on retourne le tout si le
+  // volume signé est négatif, pour que les normales pointent vers l'extérieur.
+  const ekey=(a,b)=>a<b?a+':'+b:b+':'+a;
+  const adj=new Map();
+  F.forEach((f,i)=>{ for(let e=0;e<3;e++){ const k=ekey(f[e],f[(e+1)%3]);
+    let l=adj.get(k); if(!l){ l=[]; adj.set(k,l); } l.push(i); } });
+  const vu=new Uint8Array(F.length), comp=new Int32Array(F.length).fill(-1);
+  let nComp=0;
+  for(let s=0;s<F.length;s++){
+    if(vu[s]) continue;
+    const pile=[s]; vu[s]=1; comp[s]=nComp;
+    while(pile.length){
+      const i=pile.pop(), f=F[i];
+      for(let e=0;e<3;e++){
+        const a=f[e], b=f[(e+1)%3];
+        for(const j of adj.get(ekey(a,b))||[]){
+          if(j===i||vu[j]) continue;
+          const g=F[j];
+          // même sens sur l'arête partagée = voisin retourné
+          let meme=false;
+          for(let e2=0;e2<3;e2++) if(g[e2]===a&&g[(e2+1)%3]===b) meme=true;
+          if(meme){ const t=g[1]; g[1]=g[2]; g[2]=t; log.reorientes++; }
+          vu[j]=1; comp[j]=nComp; pile.push(j);
+        }
+      }
+    }
+    nComp++;
+  }
+  const aire=f=>{ const A=V[f[0]],B=V[f[1]],C=V[f[2]];
+    const ux=B[0]-A[0],uy=B[1]-A[1],uz=B[2]-A[2], vx=C[0]-A[0],vy=C[1]-A[1],vz=C[2]-A[2];
+    return Math.hypot(uy*vz-uz*vy, uz*vx-ux*vz, ux*vy-uy*vx)/2; };
+  // ── 4. coques parasites ───────────────────────────────────────────────────
+  if(opt.coques&&nComp>1){
+    const aireC=new Float64Array(nComp); let tot=0;
+    F.forEach((f,i)=>{ const a=aire(f); aireC[comp[i]]+=a; tot+=a; });
+    const seuil=tot*(opt.coquesPct||0.005);
+    const drop=new Set(); for(let c=0;c<nComp;c++) if(aireC[c]<seuil) drop.add(c);
+    if(drop.size&&drop.size<nComp){
+      const avant=F.length;
+      F=F.filter((f,i)=>!drop.has(comp[i]));
+      log.coques_retirees=drop.size; log.faces_retirees=avant-F.length;
+    }
+  }
+  // ── 5. bouchage des trous ─────────────────────────────────────────────────
+  // Chaque arête de bord n'appartient qu'à une face. On les chaîne en boucles,
+  // qu'on ferme par un éventail depuis leur barycentre. Une boucle plane se
+  // referme exactement ; une boucle très gauchie donne une surface approchée,
+  // d'où le plafond de taille et le décompte affiché.
+  if(opt.trous){
+    const bord=new Map();
+    for(const f of F) for(let e=0;e<3;e++){
+      const a=f[e], b=f[(e+1)%3], k=ekey(a,b);
+      const c=bord.get(k); if(c) c.n++; else bord.set(k,{a,b,n:1});
+    }
+    const suiv=new Map();
+    for(const {a,b,n} of bord.values()) if(n===1){ if(!suiv.has(b)) suiv.set(b,[]); suiv.get(b).push(a); }
+    const dejaVu=new Set();
+    for(const depart of suiv.keys()){
+      if(dejaVu.has(depart)) continue;
+      const boucle=[]; let cur=depart, garde=0;
+      while(garde++<10000){
+        if(dejaVu.has(cur)) break;
+        dejaVu.add(cur); boucle.push(cur);
+        const nx=(suiv.get(cur)||[]).find(v=>!dejaVu.has(v));
+        if(nx===undefined) break;
+        cur=nx;
+      }
+      if(boucle.length<3||boucle.length>(opt.trouMax||400)) continue;
+      const g=[0,0,0];
+      for(const i of boucle){ g[0]+=V[i][0]; g[1]+=V[i][1]; g[2]+=V[i][2]; }
+      g[0]/=boucle.length; g[1]/=boucle.length; g[2]/=boucle.length;
+      const gi=V.length; V.push(g);
+      for(let i=0;i<boucle.length;i++){
+        F.push([boucle[i], boucle[(i+1)%boucle.length], gi]);
+        log.tri_ajoutes++;
+      }
+      log.trous++;
+    }
+  }
+  // volume signé global : normales vers l'extérieur
+  let v6=0;
+  for(const f of F){ const a=V[f[0]],b=V[f[1]],c=V[f[2]];
+    v6 += a[0]*(b[1]*c[2]-b[2]*c[1]) - a[1]*(b[0]*c[2]-b[2]*c[0]) + a[2]*(b[0]*c[1]-b[1]*c[0]); }
+  if(v6<0){ for(const f of F){ const t=f[1]; f[1]=f[2]; f[2]=t; } log.retourne_global=true; }
+  return {tris:F.map(f=>[V[f[0]],V[f[1]],V[f[2]]]), log};
+}
+// Export STL binaire : le format qu'acceptent tous les slicers.
+function trisToSTL(tris){
+  const buf=new ArrayBuffer(84+tris.length*50), dv=new DataView(buf);
+  new Uint8Array(buf,0,80).set(new TextEncoder().encode('3D Print Checker — maillage repare'));
+  dv.setUint32(80,tris.length,true);
+  let o=84;
+  for(const [a,b,c] of tris){
+    const ux=b[0]-a[0],uy=b[1]-a[1],uz=b[2]-a[2], vx=c[0]-a[0],vy=c[1]-a[1],vz=c[2]-a[2];
+    let nx=uy*vz-uz*vy, ny=uz*vx-ux*vz, nz=ux*vy-uy*vx;
+    const l=Math.hypot(nx,ny,nz)||1; nx/=l; ny/=l; nz/=l;
+    dv.setFloat32(o,nx,true); dv.setFloat32(o+4,ny,true); dv.setFloat32(o+8,nz,true); o+=12;
+    for(const p of [a,b,c]){ dv.setFloat32(o,p[0],true); dv.setFloat32(o+4,p[1],true); dv.setFloat32(o+8,p[2],true); o+=12; }
+    dv.setUint16(o,0,true); o+=2;
+  }
+  return buf;
+}
+
+// ── UI de réparation ────────────────────────────────────────────────────────
+let RXTRIS=null;
+function rxSync(){
+  const box=$('rx-box');
+  if(!MH||!RAW){ box.style.display='none'; return; }
+  const casse=MH.open||MH.nm||MH.badDir||MH.deg||MH.dupF||MH.shells>1;
+  box.style.display=casse?'block':'none';
+  if(!casse) return;
+  const plan=[];
+  if(MH.open) plan.push(`souder les sommets quasi-confondus puis <b>boucher ${MH.open} arête${MH.open>1?'s':''} ouverte${MH.open>1?'s':''}</b>`);
+  if(MH.deg) plan.push(`supprimer ${MH.deg} triangle${MH.deg>1?'s':''} dégénéré${MH.deg>1?'s':''}`);
+  if(MH.dupF) plan.push(`supprimer ${MH.dupF} face${MH.dupF>1?'s':''} dupliquée${MH.dupF>1?'s':''}`);
+  if(MH.badDir) plan.push(`réorienter ${MH.badDir} face${MH.badDir>1?'s':''} retournée${MH.badDir>1?'s':''}`);
+  if(MH.nm) plan.push(`${MH.nm} arête${MH.nm>1?'s':''} non-manifold — <b>non réparable automatiquement</b>, la géométrie y est ambiguë`);
+  if(MH.shells>1) plan.push(`${MH.shells} coques distinctes — un morceau ne touche pas les autres`);
+  $('rx-plan').innerHTML='<b>Ce qui sera fait :</b><br>· '+plan.join('<br>· ')+
+    (MH.shells>1?`<br><span style="color:var(--amber)">⚠️ Un fragment détaché est souvent une <b>fonction</b>, pas un déchet — une dent d'encliquetage qui ne touche plus sa paroi, par exemple. Dans ce cas il faut la <b>ressouder</b>, pas l'effacer : augmente d'abord la tolérance de soudure ci-dessous et relance. Ne coche « retirer » que si tu as vérifié que ces morceaux sont bien des débris.</span>`:'');
+}
+$('rx-go').onclick=()=>{
+  if(!RAW) return;
+  const factor=UNIT_FACTORS[$('unit').value]||1;
+  const avant=MH?{...MH}:null;
+  const t0=performance.now();
+  const r=meshRepair(scaleTris(RAW,factor),
+    {tol:+$('rx-tol').value||0.001, trous:$('rx-trous').checked,
+     coques:$('rx-coques').checked, coquesPct:0.005});
+  const apres=meshHealth(r.tris);
+  RXTRIS=r.tris;
+  const l=r.log, li=[];
+  if(l.soudes) li.push(`${l.soudes} sommets soudés`);
+  if(l.degeneres) li.push(`${l.degeneres} triangles dégénérés supprimés`);
+  if(l.doublons) li.push(`${l.doublons} faces dupliquées supprimées`);
+  if(l.reorientes) li.push(`${l.reorientes} faces réorientées`);
+  if(l.trous) li.push(`${l.trous} trous bouchés (${l.tri_ajoutes} triangles ajoutés)`);
+  if(l.coques_retirees) li.push(`${l.coques_retirees} coques parasites retirées (${l.faces_retirees} faces)`);
+  if(l.retourne_global) li.push('maillage globalement retourné, normales remises vers l\'extérieur');
+  const gain=apres.score-(avant?avant.score:0);
+  $('rx-res').style.display='block';
+  $('rx-res').innerHTML=
+    `<b>Santé ${avant?avant.score:'?'}/100 → <span style="color:${apres.score>=90?'var(--green)':'var(--amber)'}">${apres.score}/100</span></b>`+
+    ` <span style="color:var(--dim2)">(${gain>=0?'+':''}${gain} points · ${((performance.now()-t0)/1000).toFixed(1)} s)</span><br>`+
+    (li.length?'· '+li.join('<br>· '):'aucune modification nécessaire')+
+    `<br><span style="color:var(--dim2)">${apres.open} arête(s) ouverte(s) · ${apres.nm} non-manifold · ${apres.shells} coque(s) restantes. `+
+    `Le fichier d'origine n'est pas modifié : le téléchargement est une copie.</span>`+
+    (apres.nm>0?`<br><span style="color:var(--amber)">⚠️ Les arêtes non-manifold subsistent : plus de deux faces s'y rejoignent, aucun choix automatique n'est légitime. À corriger en CAO.</span>`:'')+
+    (apres.shells>1?`<br><span style="color:var(--amber)">⚠️ ${apres.shells} morceaux restent disjoints. La soudure ne recolle que des sommets <b>en regard</b> : elle referme une fissure d'export, elle ne peut pas rattacher un morceau dont les sommets de contact tombent au milieu d'une face lisse, là où la paroi n'a aucun sommet à leur offrir. Ce cas-là — une dent posée contre un mur plat — est une <b>union booléenne à refaire en CAO</b> ; augmenter la tolérance n'y changera rien.</span>`:'');
+  const dl=$('rx-dl'); dl.disabled=false; dl.classList.remove('export');
+};
+$('rx-dl').onclick=()=>{
+  if(!RXTRIS) return;
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([trisToSTL(RXTRIS)],{type:'model/stl'}));
+  a.download=(curFileName||'piece').replace(/[^\w\-]+/g,'_')+'_repare.stl';
+  a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),5000);
+};
+$('rx-use').onclick=()=>{
+  if(!RXTRIS) return;
+  curFileName=(curFileName||'piece')+' (réparé)';
+  MODELHASH=null;
+  $('unit').value='mm';           // les triangles réparés sont déjà à l'échelle réelle
+  run(RXTRIS);
 };
 
 // ══ PASSEPORT DE FABRICATION (compatible NODUS, sans compte ni réseau) ══════
