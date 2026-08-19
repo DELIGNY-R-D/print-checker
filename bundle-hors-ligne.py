@@ -86,6 +86,10 @@ amorce = """
 """
 amorce = amorce.replace("__SOURCES__", json.dumps(sources, ensure_ascii=False))
 
+# 2 bis. le lien de telechargement de CETTE version : dans le fichier embarque
+# il pointerait vers un voisin qui n'existe pas sur une cle USB.
+html = re.sub(r"<!-- hors-ligne:debut.*?hors-ligne:fin -->", "", html, flags=re.S)
+
 # 3. on retire l'importmap CDN et le script module, on pose l'amorce classique
 html = re.sub(r'<script type="importmap">.*?</script>\s*', '', html, flags=re.S)
 html = html.replace(m_script.group(0), '<script>' + amorce + '</script>')
