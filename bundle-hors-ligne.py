@@ -44,7 +44,13 @@ MODULES = {
     "three/addons/loaders/GLTFLoader.js": "vendor/GLTFLoader.js",
     "./geometrie.js": "geometrie.js",
 }
-sources = {spec: lire(chemin) for spec, chemin in MODULES.items()}
+# Les fichiers du CDN referencent une carte de sources (sourceMappingURL) :
+# les outils de developpement iraient la chercher sur le reseau, ce qui
+# trahirait la promesse hors ligne. On la retire.
+def sans_sourcemap(src):
+    return re.sub(r"//# sourceMappingURL=\S*", "", src)
+
+sources = {spec: sans_sourcemap(lire(chemin)) for spec, chemin in MODULES.items()}
 sources["__principal__"] = principal
 
 amorce = """
