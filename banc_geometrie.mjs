@@ -37,5 +37,32 @@ if(Math.abs(vf-1875)/1875<0.06){console.log('  OK  volume union a moins de 6%');
 const stl=G.trisToSTL(cube);
 eq('STL binaire : octets',stl.byteLength,84+cube.length*50);
 
+// ── orRotateTo : la rotation doit amener `from` exactement sur `to` ─────────
+const ptY=[[[0,5,0],[0,5,0],[0,5,0]]];
+const qY=G.orRotateTo(ptY,[0,1,0],[0,0,1])[0][0];
+eq('orRotateTo Y->Z : x',qY[0],0); eq('orRotateTo Y->Z : y',qY[1],0); eq('orRotateTo Y->Z : z',qY[2],5);
+const ptZ=[[[0,0,7],[0,0,7],[0,0,7]]];
+const qZ=G.orRotateTo(ptZ,[0,0,1],[0,0,-1])[0][0];   // cas vecteurs opposes (angle pi)
+eq('orRotateTo 180 : x',qZ[0],0); eq('orRotateTo 180 : y',qZ[1],0); eq('orRotateTo 180 : z',qZ[2],-7);
+
+// ── orOptimize : piece en T, pire pose possible tant qu'on ne la retourne pas.
+// Poteau fin (2x2mm) surmonte d'une large traverse (16x2mm) — a l'endroit, la
+// traverse pend presque entierement dans le vide (gros surplomb, contact
+// minuscule) ; retournee, la traverse devient la base (contact plein,
+// surplomb nul). C'est exactement le cas qui justifie de coupler orientation
+// et supports plutot que les traiter separement.
+const poteau=box(4,4,0, 6,6,20), traverse=box(-3,4,18, 13,6,20);
+const T=G.meshFuse([...poteau,...traverse],{}).tris;
+const orRes=await G.orOptimize(T,{bed:[220,220,250],seuil:0.4});
+console.log(`  ~~  T: actuelle supVol=${orRes.current.supVol.toFixed(0)}mm3 over=${orRes.current.over.toFixed(0)}mm2 · meilleure="${orRes.best.nom}" supVol=${orRes.best.supVol.toFixed(0)}mm3`);
+if(orRes.best.nom!=='orientation actuelle' && orRes.best.supVol<orRes.current.supVol){console.log('  OK  orOptimize choisit une pose avec moins de support que l\'actuelle');ok++}
+else{console.log('  KO  orOptimize n\'a pas prefere la pose sans surplomb');ko++}
+if(orRes.best.over<orRes.current.over){console.log('  OK  la pose retenue a moins de surplomb critique');ok++}
+else{console.log('  KO  surplomb non ameliore');ko++}
+// determinisme : deux appels identiques -> meme classement
+const orRes2=await G.orOptimize(T,{bed:[220,220,250],seuil:0.4});
+if(orRes.best.nom===orRes2.best.nom && Math.abs(orRes.best.supVol-orRes2.best.supVol)<1e-6){console.log('  OK  orOptimize est deterministe');ok++}
+else{console.log('  KO  orOptimize non deterministe entre deux appels identiques');ko++}
+
 console.log(`\n${ok} OK / ${ko} KO`);
 process.exit(ko?1:0);

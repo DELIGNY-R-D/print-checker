@@ -18,6 +18,8 @@
  *                     slOpenThin, slDilate
  *   fabricabilité     slAnalyzeThickness (épaisseurs, supports, ponts),
  *                     orSign, orEval (orientation)
+ *   optimisation      orRotateTo, orCandidateDirs, orSupportPass, orOptimize
+ *                     (orientation + supports comme un seul moteur, voir plus bas)
  *   édition           meshRepair, meshTransform, meshCut, meshFuse, trisToSTL
  *
  * Convention partagée : Z est la hauteur d'impression, les longueurs sont en
@@ -1001,6 +1003,291 @@ export function orEval(tris,u,orient){
     else if(-d>SIN && zc-mn>1) over+=A;        // surplomb réel, hors 1re couche
   }
   return {over, tot, contact, h:mx-mn, pctOver:tot>0?over/tot*100:0};
+}
+
+// ── Optimisation d'orientation ───────────────────────────────────────────────
+// « Trouver automatiquement la meilleure façon d'imprimer cette pièce » comme
+// UN SEUL problème, pas deux : une pose n'est réellement bonne qu'en fonction
+// des supports qu'elle entraîne (orienter seul serait incomplet), et améliorer
+// les supports d'une mauvaise pose reste local (supporter seul ne corrige pas
+// le choix de pose). D'où le pipeline : candidates → supports estimés pour
+// CHACUNE → score à six termes explicites → meilleure pose + 2 alternatives.
+
+// Rotation qui amène le vecteur unitaire `from` sur le vecteur unitaire `to`
+// (formule de Rodrigues). `u` dans orEval n'est qu'une direction « haut »
+// évaluée par projection, sans toucher au maillage — orRotateTo réalise
+// PHYSIQUEMENT cette pose : après rotation, trancher avec Z comme axe vertical
+// imprime exactement l'orientation candidate.
+export function orRotateTo(tris, from, to){
+  const l=Math.hypot(from[0],from[1],from[2])||1;
+  const f=[from[0]/l,from[1]/l,from[2]/l];
+  const dot=f[0]*to[0]+f[1]*to[1]+f[2]*to[2];
+  if(dot>0.999999) return tris.map(t=>t.map(p=>[p[0],p[1],p[2]])); // déjà aligné
+  let ax,ay,az,s,c=dot;
+  if(dot<-0.999999){
+    // vecteurs opposés : angle π, n'importe quel axe perpendiculaire convient
+    const perp=Math.abs(f[0])<0.9?[1,0,0]:[0,1,0];
+    ax=f[1]*perp[2]-f[2]*perp[1]; ay=f[2]*perp[0]-f[0]*perp[2]; az=f[0]*perp[1]-f[1]*perp[0];
+    const al=Math.hypot(ax,ay,az)||1; ax/=al; ay/=al; az/=al; s=0;
+  } else {
+    ax=f[1]*to[2]-f[2]*to[1]; ay=f[2]*to[0]-f[0]*to[2]; az=f[0]*to[1]-f[1]*to[0];
+    s=Math.hypot(ax,ay,az); ax/=s; ay/=s; az/=s;
+  }
+  const C=1-c;
+  const M=[
+    [c+ax*ax*C,    ax*ay*C-az*s, ax*az*C+ay*s],
+    [ay*ax*C+az*s, c+ay*ay*C,    ay*az*C-ax*s],
+    [az*ax*C-ay*s, az*ay*C+ax*s, c+az*az*C],
+  ];
+  const rot=p=>[M[0][0]*p[0]+M[0][1]*p[1]+M[0][2]*p[2],
+                M[1][0]*p[0]+M[1][1]*p[1]+M[1][2]*p[2],
+                M[2][0]*p[0]+M[2][1]*p[1]+M[2][2]*p[2]];
+  return tris.map(t=>t.map(rot));
+}
+
+// Directions candidates : les 6 poses sur les axes (comportement historique du
+// comparateur, toujours proposées pour ne pas régresser) + les normales des
+// faces les plus étendues, regroupées par proximité angulaire (6°). Une face
+// devient le bas du plateau quand sa normale sortante pointe à l'opposé de
+// `u` (même convention que le seuil de contact dans orEval) — ce qui approxime
+// « poser sur une face de l'enveloppe convexe » sans calculer d'enveloppe :
+// sur une pièce imprimable, les grandes faces plates SONT en général des
+// faces de l'enveloppe. Tri par aire décroissante → déterministe.
+export function orCandidateDirs(tris, orient, maxN=18){
+  const AXES=[
+    {u:[0,0,1],  nom:'orientation actuelle', axe:true},
+    {u:[0,0,-1], nom:'retournée (180°)',      axe:true},
+    {u:[0,1,0],  nom:'basculée en arrière',   axe:true},
+    {u:[0,-1,0], nom:'basculée en avant',     axe:true},
+    {u:[1,0,0],  nom:'couchée sur la gauche', axe:true},
+    {u:[-1,0,0], nom:'couchée sur la droite', axe:true},
+  ];
+  const byFace=[];
+  for(const t of tris){
+    const [a,b,c]=t;
+    const ux=b[0]-a[0],uy=b[1]-a[1],uz=b[2]-a[2], vx=c[0]-a[0],vy=c[1]-a[1],vz=c[2]-a[2];
+    let nx=uy*vz-uz*vy, ny=uz*vx-ux*vz, nz=ux*vy-uy*vx;
+    const l=Math.hypot(nx,ny,nz); if(l<1e-9) continue;
+    byFace.push({u:[-nx/l*orient,-ny/l*orient,-nz/l*orient], area:l/2});
+  }
+  byFace.sort((p,q)=>q.area-p.area);
+  // 20°, pas 6° : sur une surface facettée/organique (ex. les reliefs d'une
+  // pièce), un seuil serré fait exploser le nombre de candidates quasi
+  // identiques — chacune coûtant une passe de supports complète en aval.
+  const COS=Math.cos(20*Math.PI/180);
+  const merged=[];
+  for(const f of byFace){
+    let hit=null;
+    for(const m of merged){ if(m.u[0]*f.u[0]+m.u[1]*f.u[1]+m.u[2]*f.u[2]>COS){ hit=m; break; } }
+    if(hit) hit.area+=f.area;
+    else { merged.push({u:f.u,area:f.area}); if(merged.length>=maxN*4) break; }
+  }
+  merged.sort((p,q)=>q.area-p.area);
+  const out=AXES.slice();
+  for(const m of merged){
+    if(out.length-AXES.length>=maxN) break;
+    if(out.some(o=>o.u[0]*m.u[0]+o.u[1]*m.u[1]+o.u[2]*m.u[2]>COS)) continue;
+    out.push({u:m.u, nom:'face la plus étendue posée à plat', axe:false});
+  }
+  return out;
+}
+
+// Passe SUPPORTS + PONTS SEULE — sans champ de distance ni ouverture pour les
+// parois fines. Mesuré : sur la démo (1300 triangles), une passe complète de
+// slAnalyzeThickness en mode dépistage prenait 1,85 s par candidate, dont
+// 1,5 s (81 %) dans slField + slOpenThin — exactement le poste qui avait déjà
+// coûté le plus cher à la carte d'épaisseurs (voir plus haut), pour un
+// résultat qu'une optimisation d'orientation n'utilise jamais. D'où cette
+// version allégée, réutilisée par orOptimize ; slAnalyzeThickness reste la
+// seule source de vérité pour les chiffres affichés une fois la pose choisie
+// et appliquée — dupliquée plutôt que branchée dedans pour ne pas risquer de
+// régression sur cette fonction déjà en production et finement vérifiée.
+export async function orSupportPass(tris, cfg, onProgress){
+  const P=slPrepare(tris, cfg.bed);
+  const height=P.size[2];
+  if(height<=0) return {supArea:0,supVol:0,supLayers:0,supIslands:0,supMaxIsland:0,
+    brCount:0,brArea:0,brMaxSpan:0,brLong:0,height:0,P};
+  const seuil=cfg.seuil;
+  // Plancher de couches (60, pas 200) : pour CLASSER des orientations, la
+  // résolution verticale de la carte d'épaisseurs n'apporte rien — mesuré :
+  // sur une pièce facettée, 4 des 7 candidates montaient à 2-4 s chacune,
+  // presque tout dans le nombre de couches et la finesse du pas.
+  const step=Math.max(Math.min(seuil/2,0.25), height/(cfg.maxLayers||60));
+  const nL=Math.max(1,Math.floor(height/step));
+  const margin=2*seuil;
+  let px=cfg.px||Math.max(0.3,seuil);
+  const spanX=P.box.x1-P.box.x0+2*margin, spanY=P.box.y1-P.box.y0+2*margin;
+  while((Math.ceil(spanX/px)+2)*(Math.ceil(spanY/px)+2)>4e5) px*=1.25;
+  const W=Math.ceil(spanX/px)+2, H=Math.ceil(spanY/px)+2, WH=W*H;
+  const R={W,H,px,x0:P.box.x0-margin-px,y0:P.box.y0-margin-px,
+           cnt:new Int32Array(H),off:new Int32Array(H),cx:new Float64Array(1024),cd:new Int8Array(1024)};
+  const mx=Math.max(W,H);
+  const C={f:new Float64Array(mx),d:new Float64Array(mx),v:new Int32Array(mx),z:new Float64Array(mx+1),
+           seed:new Float32Array(WH),t:new Float32Array(WH)};
+  const dSup=new Float32Array(WH);
+  const mask=new Uint8Array(WH), sub=new Uint8Array(WH), bb=new Int32Array(5);
+  const OVER=OVERHANG_LIMIT;
+  const rSup=Math.max(1,Math.round((step/Math.tan(OVER*Math.PI/180))/px));
+  const SUPFILL=0.15, BRIDGE_MAX=25;
+  const cellA=px*px;
+  const roi={rw:0,rh:0,i0:0,j0:0};
+  const prevM=new Uint8Array(WH), pv=new Uint8Array(WH), dil=new Uint8Array(WH), tmpD=new Uint8Array(WH),
+        unsup=new Uint8Array(WH), supM=new Uint8Array(WH), lastZ=new Float32Array(WH);
+  const seen=new Uint8Array(WH), stack=new Int32Array(WH);
+  let supArea=0, supVol=0, supLayers=0, supIslands=0, supMaxIsland=0;
+  let brCount=0, brArea=0, brMaxSpan=0, brLong=0;
+  const toROI=(pad)=>{
+    const i0=Math.max(0,bb[0]-pad), i1=Math.min(W-1,bb[1]+pad);
+    const j0=Math.max(0,bb[2]-pad), j1=Math.min(H-1,bb[3]+pad);
+    const rw=i1-i0+1, rh=j1-j0+1;
+    for(let j=0;j<rh;j++) sub.set(mask.subarray((j0+j)*W+i0,(j0+j)*W+i1+1), j*rw);
+    roi.rw=rw; roi.rh=rh; roi.i0=i0; roi.j0=j0;
+  };
+  let ptr=0, active=[]; const seg=new Float64Array(4); let segs=[];
+  const zAt=i=>Math.min(height-1e-4,(i+0.5)*step);
+  let lastYield=performance.now();
+  for(let i=0;i<nL;i++){
+    const z=zAt(i);
+    while(ptr<P.n && P.zlo[P.ord[ptr]]<=z) active.push(P.ord[ptr++]);
+    if(active.length) active=active.filter(t=>P.zhi[t]>=z);
+    segs.length=0;
+    for(const t of active) if(slTriSeg(P,t,z,seg)) segs.push(seg[0],seg[1],seg[2],seg[3]);
+    slFill(segs,R,mask,bb);
+    if(bb[1]>=0){
+      toROI(Math.max(2,rSup+1));
+      const {rw,rh,i0,j0}=roi, n0=rw*rh;
+      if(i>0){
+        for(let j=0;j<rh;j++) pv.set(prevM.subarray((j0+j)*W+i0,(j0+j)*W+i0+rw), j*rw);
+        slDilate(pv,rw,rh,rSup,dil,tmpD);
+        let nUn=0;
+        for(let k=0;k<n0;k++){ const u=(sub[k]&&!dil[k])?1:0; unsup[k]=u; if(u)nUn++; }
+        if(nUn){
+          for(let k=0;k<n0;k++) supM[k]=(sub[k]&&dil[k])?1:0;
+          for(let k=0;k<n0;k++) C.seed[k]=supM[k]?0:SL_BIG;
+          slEdt(C.seed,rw,rh,dSup,C);
+          const MAXSTEP=Math.ceil(BRIDGE_MAX*1.6/px);
+          const walk=(cx,cy,dx,dy)=>{
+            const len=Math.hypot(dx,dy)*px;
+            for(let s=1;s<=MAXSTEP;s++){
+              const x=cx+dx*s, y=cy+dy*s;
+              if(x<0||y<0||x>=rw||y>=rh) return -1;
+              const q=y*rw+x;
+              if(supM[q]) return s*len;
+              if(!sub[q]) return -1;
+            }
+            return -1;
+          };
+          const PAIRS=[[1,0],[0,1],[1,1],[1,-1]];
+          let area=0, big=0, nIsl=0;
+          seen.fill(0,0,n0);
+          for(let p0=0;p0<n0;p0++){
+            if(seen[p0]||!unsup[p0]) continue;
+            let sp=0,n=0,vol=0,deep=p0,dmax=-1; stack[sp++]=p0; seen[p0]=1;
+            while(sp){
+              const p=stack[--sp]; n++;
+              const x=p%rw, y=(p/rw)|0;
+              if(dSup[p]>dmax){ dmax=dSup[p]; deep=p; }
+              vol+=cellA*Math.max(0,z-lastZ[(j0+y)*W+i0+x])*SUPFILL;
+              if(x>0)   {const q=p-1; if(!seen[q]&&unsup[q]){seen[q]=1;stack[sp++]=q;}}
+              if(x<rw-1){const q=p+1; if(!seen[q]&&unsup[q]){seen[q]=1;stack[sp++]=q;}}
+              if(y>0)   {const q=p-rw;if(!seen[q]&&unsup[q]){seen[q]=1;stack[sp++]=q;}}
+              if(y<rh-1){const q=p+rw;if(!seen[q]&&unsup[q]){seen[q]=1;stack[sp++]=q;}}
+            }
+            const a=n*cellA;
+            if(a<1) continue;
+            const cx=deep%rw, cy=(deep/rw)|0;
+            let span=Infinity;
+            for(const [dx,dy] of PAIRS){
+              const d1=walk(cx,cy,dx,dy), d2=walk(cx,cy,-dx,-dy);
+              if(d1>=0&&d2>=0&&d1+d2<span) span=d1+d2;
+            }
+            if(isFinite(span)){
+              brCount++; brArea+=a; if(span>brMaxSpan) brMaxSpan=span;
+              if(span>BRIDGE_MAX) brLong++;
+            } else {
+              nIsl++; area+=a; if(a>big)big=a; supVol+=vol;
+            }
+          }
+          if(area>0){ supArea+=area; supLayers++; supIslands+=nIsl; if(big>supMaxIsland)supMaxIsland=big; }
+        }
+      }
+      for(let j=0;j<rh;j++){ const rb=j*rw, fb=(j0+j)*W+i0;
+        for(let x=0;x<rw;x++) if(sub[rb+x]) lastZ[fb+x]=z; }
+      prevM.set(mask);
+    } else prevM.fill(0);
+    if(performance.now()-lastYield>100){ onProgress&&onProgress((i+1)/nL); await slYield(); lastYield=performance.now(); }
+  }
+  return {supArea, supVol, supLayers, supIslands, supMaxIsland, supAngle:OVER,
+          brCount, brArea, brMaxSpan, brLong, brMax:BRIDGE_MAX, height, P, nL, px, step};
+}
+
+// Score = supports (volume) + temps (proxy = hauteur, à volume constant plus
+// de couches veut dire plus d'arrêts/reprises) + surface à supporter + hauteur
+// relative (élancement, risque de vibration/renversement) + stabilité
+// (contact plateau) + surplombs critiques — SIX termes gardés SÉPARÉS dans le
+// résultat, jamais fondus en un nombre opaque : chaque écart reste affichable.
+// Deux passes, comme le dépistage de la carte d'épaisseurs : orEval (gratuit,
+// aucune rotation, aucun tranchage) présélectionne toutes les candidates ;
+// seules les meilleures reçoivent la passe coûteuse (rotation réelle + carte
+// des supports en résolution grossière — trancher chaque candidate en fin
+// coûterait des dizaines de secondes par pièce pour un classement que la
+// présélection donne déjà correctement à moindre coût).
+const OR_W={supports:3, temps:1, surfSupport:1.5, hauteur:0.5, stabilite:1, surplombs:1};
+export async function orOptimize(tris, cfg, onProgress){
+  const orient=orSign(tris);
+  const bed=cfg.bed, seuil=cfg.seuil;
+  const all=orCandidateDirs(tris, orient, cfg.maxCand||18);
+  const cheap=all.map(c=>({...c, ...orEval(tris,c.u,orient)}));
+  // présélection bon marché : mêmes poids que l'ancien comparateur 6 axes
+  // (porte-à-faux d'abord, hauteur ensuite, contact en appoint), pour ne pas
+  // régresser sur ce que la géométrie seule décidait déjà.
+  const preScore=r=>r.pctOver*3 + r.h*0.05 - (r.contact/Math.max(1e-6,r.tot))*50;
+  const n=Math.min(cheap.length, cfg.shortlist||7);
+  const short=cheap.slice().sort((a,b)=>preScore(a)-preScore(b)).slice(0,n);
+  if(!short.some(c=>c.nom==='orientation actuelle')){
+    const cur=cheap.find(c=>c.nom==='orientation actuelle'); if(cur) short.push(cur);
+  }
+  const px=Math.max(0.3, seuil);
+  const survivors=[]; let discarded=0, i=0;
+  for(const cand of short){
+    const rot=orRotateTo(tris, cand.u, [0,0,1]);
+    let x0=1e9,x1=-1e9,y0=1e9,y1=-1e9;
+    for(const t of rot) for(const p of t){ if(p[0]<x0)x0=p[0]; if(p[0]>x1)x1=p[0]; if(p[1]<y0)y0=p[1]; if(p[1]>y1)y1=p[1]; }
+    const fx=x1-x0, fy=y1-y0;
+    // la rotation autour de l'axe d'impression (lacet) est libre : elle ne
+    // change ni surplombs ni supports, seulement le placement sur le plateau
+    const fits=(fx<=bed[0]&&fy<=bed[1])||(fx<=bed[1]&&fy<=bed[0]);
+    if(!fits){ discarded++; i++; onProgress&&onProgress(i/short.length); continue; }
+    const TH=await orSupportPass(rot,{bed,seuil,px});
+    survivors.push({...cand, supVol:TH.supVol, supArea:TH.supArea,
+      brCount:TH.brCount, height:TH.height, footprint:fx*fy});
+    i++; onProgress&&onProgress(i/short.length);
+  }
+  if(!survivors.length) return {current:null, best:null, alternatives:[], discarded, n:short.length};
+  const mm=k=>{
+    let lo=Infinity,hi=-Infinity;
+    for(const s of survivors){ const v=s[k]; if(v<lo)lo=v; if(v>hi)hi=v; }
+    return {lo,hi};
+  };
+  const norm=(v,{lo,hi})=>hi>lo?(v-lo)/(hi-lo):0;
+  const rSupVol=mm('supVol'), rSupArea=mm('supArea'), rOver=mm('over');
+  const maxContact=Math.max(...survivors.map(x=>x.contact),1e-6);
+  const maxHeight=Math.max(...survivors.map(x=>x.height),1e-6);
+  const maxElance=Math.max(...survivors.map(x=>x.height/Math.sqrt(Math.max(1,x.footprint))),1e-6);
+  const score=s=>{
+    const elancement=s.height/Math.sqrt(Math.max(1,s.footprint));
+    const stabBad=1-s.contact/maxContact;
+    return OR_W.supports*norm(s.supVol,rSupVol)
+         + OR_W.temps*(s.height/maxHeight)
+         + OR_W.surfSupport*norm(s.supArea,rSupArea)
+         + OR_W.hauteur*(elancement/maxElance)
+         + OR_W.stabilite*stabBad
+         + OR_W.surplombs*norm(s.over,rOver);
+  };
+  const ranked=survivors.map(s=>({...s, elancement:s.height/Math.sqrt(Math.max(1,s.footprint)), score:score(s)}))
+                         .sort((a,b)=>a.score-b.score);
+  const current=ranked.find(s=>s.nom==='orientation actuelle')||ranked[0];
+  return {current, best:ranked[0], alternatives:ranked.slice(1,3), discarded, n:short.length, ranked};
 }
 
 // Épaisseur locale 2D par disques inscrits. Les pixels sont parcourus du plus

@@ -422,9 +422,9 @@ footer .disc{max-width:660px;margin:0 auto 10px;}
 
       <div class="thbox">
         <div class="row-btn" style="justify-content:flex-start;margin-top:0">
-          <button class="btn" id="or-go">🔄 Chercher une meilleure orientation</button>
+          <button class="btn" id="or-go">🔄 Trouver la meilleure orientation (avec supports)</button>
         </div>
-        <div class="gplan" id="or-out">Compare les six façons de poser la pièce sur le plateau : surface en porte-à-faux, hauteur, et surface de contact avec le plateau.</div>
+        <div class="gplan" id="or-out">Un seul moteur : teste plusieurs poses, estime les supports que chacune entraîne, et recommande la meilleure — une pose n'est bonne qu'en fonction des supports qu'elle évite.</div>
       </div>
 
       <div class="export-row">
@@ -786,7 +786,7 @@ import { OVERHANG_LIMIT, FIL_D, FIL_A,
          slContours, slSimplify, slInfillLines, slDilate, slLocalThickness, slOpenThin,
          slWriter, slScripts, slSlice, slAnalyzeThickness,
          meshRepair, trisToSTL, meshTransform, meshCut, meshFuse,
-         orSign, orEval } from './geometrie.js';
+         orSign, orEval, orOptimize, orRotateTo } from './geometrie.js';
 
 // ── Données moteur (copiées fidèlement de print_engine.js) ──────────────────
 // Groupes déclarés séparément (FDM filament vs résine/cire coulée) pour peupler
@@ -2355,43 +2355,55 @@ $('pp-go').onclick=async()=>{
   a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),5000);
 };
 
-// ══ ORIENTATION ═════════════════════════════════════════════════════════════
-// On évalue les six façons de poser la pièce sur le plateau, sans trancher :
-// tout se déduit des normales et des projections, donc en une passe par
-// orientation. Trancher chaque candidat coûterait des dizaines de secondes
-// pièce, pour un classement que la géométrie donne déjà.
-// Limite assumée et affichée : SEULES les six orientations sur les axes sont
-// testées. Une pose inclinée peut être meilleure ; elle n'est pas cherchée ici.
-const OR_DIRS=[
-  {u:[0,0,1],  nom:'orientation actuelle'},
-  {u:[0,0,-1], nom:'retournée (180° autour de X)'},
-  {u:[0,1,0],  nom:'basculée en arrière (X −90°)'},
-  {u:[0,-1,0], nom:'basculée en avant (X +90°)'},
-  {u:[1,0,0],  nom:'couchée sur la gauche (Y +90°)'},
-  {u:[-1,0,0], nom:'couchée sur la droite (Y −90°)'},
-];
-function orRun(){
+// ══ ORIENTATION + SUPPORTS (un seul moteur) ════════════════════════════════
+// « Trouver automatiquement la meilleure façon d'imprimer cette pièce » comme
+// UN SEUL problème (orOptimize dans geometrie.js) : une pose n'est réellement
+// bonne qu'en fonction des supports qu'elle entraîne. Score à SIX termes
+// gardés séparés (jamais un nombre opaque) : chaque écart affiché ci-dessous
+// vient d'une vraie mesure, pas d'un indice composite invisible.
+function orPct(v,cur){
+  if(Math.abs(cur)<1e-9) return Math.abs(v)<1e-9?'inchangé':`+${v.toFixed(1)}`;
+  const p=(v-cur)/cur*100;
+  return (p<=0?'−':'+')+Math.abs(p).toFixed(0)+' %';
+}
+function orCard(c,cur,label){
+  return `<div style="margin-top:10px;padding:10px;border:2px solid var(--ink);border-radius:10px">`+
+    `<b>${label}</b> — ${c.nom}<br>`+
+    `<span class="layer-lbl">support ${orPct(c.supVol,cur.supVol)} volume (${(c.supVol/1000).toFixed(1)} cm³) · `+
+    `${orPct(c.supArea,cur.supArea)} surface (${(c.supArea/100).toFixed(1)} cm²) · `+
+    `hauteur ${orPct(c.height,cur.height)} (${c.height.toFixed(0)} mm) · `+
+    `contact plateau ${orPct(c.contact,cur.contact)} (${(c.contact/100).toFixed(1)} cm²) · `+
+    `surplomb critique ${orPct(c.over,cur.over)}</span><br>`+
+    `<button class="btn or-apply" data-u="${c.u.join(',')}" style="margin-top:6px">Appliquer cette orientation</button>`+
+    `</div>`;
+}
+async function orRun(){
   if(!SCALED){ $('or-out').textContent='Charge un modèle d\'abord.'; return; }
-  const sgn=orSign(SCALED);
-  const res=OR_DIRS.map(d=>({...d, ...orEval(SCALED,d.u,sgn)}));
-  const cur=res[0];
-  // Classement : le porte-à-faux d'abord (c'est lui qui rate une impression),
-  // la hauteur ensuite (temps et stabilité), le contact au plateau en appoint.
-  const score=r=>r.pctOver*3 + (r.h/Math.max(1,cur.h))*10 - (r.contact/Math.max(1e-6,r.tot))*100*0.5;
-  const best=res.slice().sort((a,b)=>score(a)-score(b))[0];
-  const d=(a,b)=>b===0?(a===0?0:100):(a-b)/b*100;
-  const pc=v=>(v>=0?'+':'−')+Math.abs(v).toFixed(0)+' %';
-  const gain=best!==cur && score(best)<score(cur)-0.5;
-  $('or-out').innerHTML=
-    `<b>Orientation actuelle</b> — ${cur.pctOver.toFixed(1)} % de la surface en porte-à-faux · `+
-    `hauteur ${cur.h.toFixed(0)} mm · contact plateau ${(cur.contact/100).toFixed(1)} cm²<br>`+
-    (gain
-      ? `<b style="color:var(--green)">Meilleure pose : ${best.nom}</b><br>`+
-        `<span class="layer-lbl">porte-à-faux ${pc(d(best.pctOver,cur.pctOver))} · `+
-        `hauteur ${pc(d(best.h,cur.h))} · contact plateau ${pc(d(best.contact,cur.contact))}</span><br>`+
-        `<span style="color:var(--dim2)">Applique la rotation dans ton logiciel de CAO ou ton slicer, puis recharge le fichier ici pour vérifier.</span>`
-      : `<b style="color:var(--green)">Aucune des cinq autres poses ne fait mieux</b> — garde celle-ci.`)+
-    `<br><span style="color:var(--dim2)">Seules les six orientations sur les axes sont comparées : une pose inclinée pourrait être meilleure, elle n'est pas cherchée ici. Comparaison géométrique, sans tranchage.</span>`;
+  const pr=PRINTERS[$('printer').value]||PRINTERS.bambu_a1;
+  const btn=$('or-go'), out=$('or-out');
+  btn.disabled=true; btn.textContent='Recherche en cours…';
+  out.innerHTML='Évaluation des poses candidates puis, pour les meilleures, de leurs supports (carte grossière, sans trancher)…';
+  let R;
+  try{ R=await orOptimize(SCALED,{bed:pr.bed, seuil:thSeuil()}); }
+  finally{ btn.disabled=false; btn.textContent='🔄 Trouver la meilleure orientation (avec supports)'; }
+  if(!R.current){ out.innerHTML='Aucune des poses testées ne tient sur le plateau de cette imprimante.'; return; }
+  const cur=R.current, best=R.best;
+  const gain=best.nom!=='orientation actuelle';
+  let html=`<b>Orientation actuelle</b> — support ${(cur.supVol/1000).toFixed(1)} cm³ / ${(cur.supArea/100).toFixed(1)} cm² · `+
+    `hauteur ${cur.height.toFixed(0)} mm · contact plateau ${(cur.contact/100).toFixed(1)} cm² · surplomb critique ${(cur.over/100).toFixed(1)} cm²<br>`;
+  if(gain){
+    html+=`<b style="color:var(--green)">Meilleure pose trouvée</b>`+orCard(best,cur,'Recommandée');
+    for(const alt of R.alternatives) html+=orCard(alt,cur,'Alternative');
+  } else {
+    html+=`<b style="color:var(--green)">Aucune des ${R.n} poses testées ne fait mieux</b> — garde celle-ci.`;
+  }
+  if(R.discarded) html+=`<br><span style="color:var(--dim2)">${R.discarded} pose${R.discarded>1?'s':''} écartée${R.discarded>1?'s':''} : ne tenai${R.discarded>1?'ent':'t'} pas sur le plateau ${pr.bed[0]}×${pr.bed[1]} mm.</span>`;
+  html+=`<br><span style="color:var(--dim2)">${R.n} poses comparées (6 sur les axes + faces les plus étendues posées à plat). Supports estimés en résolution de dépistage, sans trancher — les chiffres exacts viennent de l'analyse de la carte 3 une fois la pose appliquée. « Temps » n'est pas mesuré : à volume constant, une pièce plus haute a plus de couches, donc plus d'arrêts/reprises — c'est ce que reflète la hauteur ci-dessus.</span>`;
+  out.innerHTML=html;
+  out.querySelectorAll('.or-apply').forEach(b=>b.onclick=()=>{
+    const u=b.dataset.u.split(',').map(Number);
+    atAppliquer(orRotateTo(SCALED,u,[0,0,1]),'Orientation recommandée par le moteur orientation + supports.');
+  });
 }
 $('or-go').onclick=orRun;
 
