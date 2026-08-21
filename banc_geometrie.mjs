@@ -64,5 +64,45 @@ const orRes2=await G.orOptimize(T,{bed:[220,220,250],seuil:0.4});
 if(orRes.best.nom===orRes2.best.nom && Math.abs(orRes.best.supVol-orRes2.best.supVol)<1e-6){console.log('  OK  orOptimize est deterministe');ok++}
 else{console.log('  KO  orOptimize non deterministe entre deux appels identiques');ko++}
 
+// ── slAdaptiveSchedule : fin sur une pente douce, grossier sur une paroi franche
+// Bas = boite droite (parois verticales) 0-20mm. Haut = une seule facette en
+// rampe tres peu inclinee (11,3 deg de l'horizontale) de 20 a 28mm — la pente
+// qui, par construction (h = cusp*tan(beta)), doit forcer les couches les
+// plus fines possibles (hmin), alors que les parois verticales n'imposent rien
+// (bornees a hmax).
+const droite=box(0,0,0,40,10,20);
+const rampe=[[[0,0,20],[40,0,28],[40,10,28]],[[0,0,20],[40,10,28],[0,10,20]]];
+const piece=[...droite,...rampe];
+const sch=G.slAdaptiveSchedule(piece,{bed:[220,220,250], firstH:0.25, hmin:0.08, hmax:0.28, cusp:0.2});
+eq('adaptatif : hauteur totale',sch.zs[sch.zs.length-1],28,1e-6);
+const hFinale=sch.hs[sch.hs.length-1];
+if(hFinale>=0.08-1e-9){console.log(`  OK  derniere couche (${hFinale.toFixed(3)} mm) pas sous hmin (reliquat absorbe)`);ok++}
+else{console.log(`  KO  derniere couche ${hFinale.toFixed(3)} mm sous hmin 0.08`);ko++}
+const hAt=z=>{ for(let i=1;i<sch.zs.length;i++) if(sch.zs[i]>=z) return sch.hs[i]; return sch.hs[sch.hs.length-1]; };
+const hMilieuBoite=hAt(10), hRampe=hAt(24);
+console.log(`  ~~  h a mi-hauteur de la boite (paroi franche) = ${hMilieuBoite.toFixed(3)} mm · h dans la rampe (11,3°) = ${hRampe.toFixed(3)} mm`);
+if(Math.abs(hMilieuBoite-0.28)<1e-6){console.log('  OK  paroi verticale -> hmax');ok++}else{console.log('  KO  paroi verticale non bornee a hmax');ko++}
+if(Math.abs(hRampe-0.08)<1e-6){console.log('  OK  rampe peu inclinee -> hmin');ok++}else{console.log('  KO  rampe non bornee a hmin');ko++}
+if(hRampe<hMilieuBoite){console.log('  OK  adaptatif : couches plus fines sur la pente douce que sur la paroi');ok++}else{console.log('  KO  pas d\'adaptation reelle');ko++}
+
+// slSlice({adaptive:true}) doit tenir compte du schedule (moins de couches
+// qu'en hmin partout, plus que en hmax partout) et ne pas regresser le mode
+// uniforme existant.
+const cfgAd={bed:[220,220,250], printerName:'test', materialKey:'PLA', name:'piece',
+  firstH:0.25, hmin:0.08, hmax:0.28, cusp:0.2, adaptive:true,
+  nozzle:0.4, lineW:0.45, perims:2, topBottom:3, infill:15,
+  vPer:40, vFill:60, vFirst:20, vTrav:120, retract:1.5, retractV:35,
+  skirtLoops:0, skirtGap:3, nozC:210, bedC:60, fan:100, fanLayer:2, preset:'marlin'};
+const rAd=await G.slSlice(piece,cfgAd,()=>{});
+const nUniformHmin=Math.ceil((28-0.25)/0.08)+1, nUniformHmax=Math.ceil((28-0.25)/0.28)+1;
+console.log(`  ~~  adaptatif : ${rAd.nLayers} couches (uniforme hmin=${nUniformHmin}, uniforme hmax=${nUniformHmax}), gain annonce ${rAd.adaptive.gainPct.toFixed(0)}%`);
+if(rAd.nLayers<nUniformHmin && rAd.nLayers>nUniformHmax){console.log('  OK  nombre de couches adaptatif entre les deux bornes uniformes');ok++}
+else{console.log('  KO  nombre de couches adaptatif hors bornes attendues');ko++}
+if(rAd.adaptive.gainPct>0){console.log('  OK  gain positif annonce vs hmin uniforme');ok++}else{console.log('  KO  gain non positif');ko++}
+const cfgUni={...cfgAd, adaptive:false, layerH:0.2};
+const rUni=await G.slSlice(piece,cfgUni,()=>{});
+if(!rUni.adaptive){console.log('  OK  mode uniforme toujours sans stats adaptatives (pas de regression)');ok++}
+else{console.log('  KO  mode uniforme a tort marque adaptatif');ko++}
+
 console.log(`\n${ok} OK / ${ko} KO`);
 process.exit(ko?1:0);

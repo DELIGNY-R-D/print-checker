@@ -444,8 +444,12 @@ footer .disc{max-width:660px;margin:0 auto 10px;}
     <div class="card">
       <h2>4 · Réglages de tranchage</h2>
       <div class="slgrid">
-        <div class="fld"><label>Hauteur de couche <span class="infl" id="sl-lhv">0.20 mm</span></label>
+        <div class="fld"><label id="sl-lh-lbl">Hauteur de couche <span class="infl" id="sl-lhv">0.20 mm</span></label>
           <input type="range" id="sl-lh" min="0.06" max="0.4" step="0.02" value="0.2"></div>
+        <div class="fld" id="sl-hmin-fld" style="display:none">
+          <label>Hauteur mini (pentes douces) <span class="infl" id="sl-hminv">0.08 mm</span></label>
+          <input type="range" id="sl-hmin" min="0.04" max="0.2" step="0.01" value="0.08"></div>
+        <div class="fld"><label><input type="checkbox" id="sl-adapt" style="width:auto;vertical-align:middle"> Hauteur de couche adaptative</label></div>
         <div class="fld"><label>Première couche <span class="infl" id="sl-flhv">0.25 mm</span></label>
           <input type="range" id="sl-flh" min="0.1" max="0.4" step="0.05" value="0.25"></div>
         <div class="fld"><label>Diamètre de buse</label>
@@ -784,7 +788,7 @@ import { OVERHANG_LIMIT, FIL_D, FIL_A,
          analyze, meshHealth,
          slYield, slPrepare, slTriSeg, slFill, slDt1, slTranspose, slEdt, slField,
          slContours, slSimplify, slInfillLines, slDilate, slLocalThickness, slOpenThin,
-         slWriter, slScripts, slSlice, slAnalyzeThickness,
+         slWriter, slScripts, slSlice, slAdaptiveSchedule, slAnalyzeThickness,
          meshRepair, trisToSTL, meshTransform, meshCut, meshFuse,
          orSign, orEval, orOptimize, orRotateTo } from './geometrie.js';
 
@@ -2009,7 +2013,9 @@ $('gdemo').onclick=()=>gLoadText(gDemoText(),'exemple-cube.gcode');
 // LIMITES ASSUMÉES, écrites aussi dans l'en-tête du G-code produit : pas de
 // supports, pas de détection de ponts, pas de parois plus fines que la buse
 // (elles disparaissent — la carte 3 les signale déjà en "détail très fin"),
-// pas de lissage/ironing, pas de hauteur de couche variable, pas d'arc fitting.
+// pas de lissage/ironing, pas d'arc fitting. Hauteur de couche ADAPTATIVE
+// disponible depuis le 21/08 (slAdaptiveSchedule) : fine sur les pentes
+// douces, grossière sur les parois franches, voir plus bas.
 // Respiration entre couches. Volontairement PAS setTimeout : le navigateur le
 // borne à 4 ms au premier plan et le bride jusqu'à ~1 s (voire le gèle) dès que
 // l'onglet passe en arrière-plan — un tranchage lancé puis laissé de côté
@@ -2034,12 +2040,18 @@ $('gdemo').onclick=()=>gLoadText(gDemoText(),'exemple-cube.gcode');
 // ── UI de la trancheuse ─────────────────────────────────────────────────────
 let SLGCODE=null, SLNAME='piece', SLRES=null, slDirty={start:false,end:false};
 const slNum=(id,dflt)=>{ const v=parseFloat($(id).value); return isFinite(v)?v:dflt; };
+// Largeur de gradin visée par la hauteur adaptative (voir slAdaptiveSchedule) :
+// non exposée au réglage, un 3e curseur pour un seul gain de qualité/vitesse
+// aurait plus dilué le réglage qu'aidé — hmin/hmax suffisent à le piloter.
+const SL_CUSP=0.15;
 function slCfg(){
   const pr=PRINTERS[$('printer').value]||PRINTERS.bambu_a1;
   const nozzle=+$('sl-noz').value, lineW=nozzle*1.125;
+  const adaptive=$('sl-adapt').checked;
   return {
     bed:pr.bed, printerName:pr.name, materialKey:$('material').value, name:curFileName,
     layerH:+$('sl-lh').value, firstH:+$('sl-flh').value, nozzle, lineW,
+    adaptive, hmax:+$('sl-lh').value, hmin:+$('sl-hmin').value, cusp:SL_CUSP,
     perims:Math.max(1,Math.round(+$('wall').value/lineW)),
     topBottom:+$('sl-tb').value, infill:+$('infill').value,
     vPer:slNum('sl-vper',40), vFill:slNum('sl-vfill',60), vFirst:slNum('sl-vfirst',20), vTrav:slNum('sl-vtrav',120),
@@ -2056,7 +2068,12 @@ function slFillScripts(){
   if(!slDirty.end)   $('sl-end').value=s.end;
 }
 function slSync(){
+  const adapt=$('sl-adapt').checked;
+  $('sl-lh-lbl').firstChild.textContent=adapt?'Hauteur de couche (max) ':'Hauteur de couche ';
   $('sl-lhv').textContent=(+$('sl-lh').value).toFixed(2)+' mm';
+  $('sl-hminv').textContent=(+$('sl-hmin').value).toFixed(2)+' mm';
+  $('sl-hmin-fld').style.display=adapt?'':'none';
+  if(+$('sl-hmin').value>=+$('sl-lh').value) $('sl-hmin').value=Math.max(0.04,+$('sl-lh').value-0.02);
   $('sl-flhv').textContent=(+$('sl-flh').value).toFixed(2)+' mm';
   $('sl-tbv').textContent=$('sl-tb').value;
   const c=slCfg(), pr=PRINTERS[$('printer').value]||PRINTERS.bambu_a1, mat=MATERIALS[$('material').value]||MATERIALS.PLA;
@@ -2071,17 +2088,25 @@ function slSync(){
     block=`La pièce (${G.size.map(x=>Math.round(x)).join('×')} mm) dépasse le volume de <b>${pr.name}</b> (${pr.bed.join('×')} mm) : rien ne sert de la trancher. Réduis l'échelle, réoriente, découpe, ou change d'imprimante en carte 1.`;
   go.disabled=!!block;
   go.classList.toggle('export',!!block);
-  const nL=G?Math.max(1,Math.floor((G.size[2]-c.firstH)/c.layerH)+1):0;
+  let nL=G?Math.max(1,Math.floor((G.size[2]-c.firstH)/c.layerH)+1):0, adaptNote='';
+  if(!block && c.adaptive && SCALED && G){
+    try{
+      const sch=slAdaptiveSchedule(SCALED,{bed:c.bed,firstH:c.firstH,hmin:c.hmin,hmax:c.hmax,cusp:c.cusp});
+      nL=sch.zs.length;
+      const nUniformMin=Math.max(1,Math.ceil((G.size[2]-c.firstH)/c.hmin)+1);
+      adaptNote=` (adaptative ${c.hmin}-${c.hmax} mm · ${Math.round(100*(1-nL/nUniformMin))} % de couches en moins qu'en ${c.hmin} mm partout)`;
+    }catch(e){ adaptNote=' (adaptative — estimation indisponible pour cette pièce)'; }
+  }
   $('sl-derived').innerHTML = block ? `⚠️ ${block}` :
     `Largeur de ligne <b>${c.lineW.toFixed(2)} mm</b> (buse ${c.nozzle} mm × 1,125) · `+
     `<b>${c.perims} périmètre${c.perims>1?'s':''}</b> déduits de l'épaisseur de paroi ${(+$('wall').value).toFixed(1)} mm de la carte 1 · `+
     `remplissage <b>${c.infill} %</b> (curseur carte 1)<br>`+
-    `<span style="color:var(--dim2)">≈ ${nL} couches pour ${G?G.size[2].toFixed(1):'—'} mm de haut · pièce centrée sur le plateau ${c.bed[0]}×${c.bed[1]} mm</span>`+
+    `<span style="color:var(--dim2)">≈ ${nL} couches${adaptNote} pour ${G?G.size[2].toFixed(1):'—'} mm de haut · pièce centrée sur le plateau ${c.bed[0]}×${c.bed[1]} mm</span>`+
     (G&&G.maxOverhangDeg>OVERHANG_LIMIT?`<br><span style="color:var(--amber)">⚠️ ${g_overhangNote(G)}</span>`:'');
   slFillScripts();
 }
 const g_overhangNote=g=>`Surplombs à ${g.maxOverhangDeg}° détectés : la trancheuse ne génère pas de supports, ces zones s'imprimeront dans le vide.`;
-['sl-lh','sl-flh','sl-noz','sl-tb','sl-tn','sl-tb2','sl-fan','sl-fanl','sl-preset','sl-vper','sl-vfill','sl-vfirst','sl-vtrav','sl-ret','sl-retv','sl-skirt','sl-skirtgap']
+['sl-lh','sl-hmin','sl-adapt','sl-flh','sl-noz','sl-tb','sl-tn','sl-tb2','sl-fan','sl-fanl','sl-preset','sl-vper','sl-vfill','sl-vfirst','sl-vtrav','sl-ret','sl-retv','sl-skirt','sl-skirtgap']
   .forEach(id=>$(id).addEventListener('input',slSync));
 $('sl-start').addEventListener('input',()=>slDirty.start=true);
 $('sl-end').addEventListener('input',()=>slDirty.end=true);
@@ -2113,6 +2138,8 @@ $('sl-go').onclick=async()=>{
     res.innerHTML=
       `<b>${r.nLayers} couches</b> tranchées en ${dt} s · raster ${r.px.toFixed(3)} mm/px (${r.grid[0]}×${r.grid[1]})<br>`+
       `Temps estimé <b>${gFmtTime(r.timeS)}</b> · filament <b>${r.filM.toFixed(2)} m</b> ≈ <b>${r.weightG.toFixed(0)} g</b> · matière <b>${r.costEur.toFixed(2)} €</b><br>`+
+      (r.adaptive?`<span style="color:var(--green)">Hauteur adaptative ${r.adaptive.hMin.toFixed(2)}-${r.adaptive.hMax.toFixed(2)} mm (moyenne ${r.adaptive.hAvg.toFixed(2)} mm)</span> — `+
+        `<b>${Math.round(r.adaptive.gainPct)} % de couches en moins</b> qu'à ${(+$('sl-hmin').value).toFixed(2)} mm partout (${r.adaptive.nUniformMin} couches), pour la même finesse sur les pentes<br>`:'')+
       `<span style="color:var(--dim2)">Estimation rapide de la carte 2 : ${est.weightG} g · ${est.timeH} h · ${est.costEur.toFixed(2)} € — l'écart mesure ce que le modèle coque+remplissage ne voyait pas.</span>`+
       (r.emptyLayers?`<br><span style="color:var(--amber)">⚠️ ${r.emptyLayers} couche(s) vide(s) — maillage ouvert ou détail sous le pas de raster.</span>`:'')+
       `<br><span style="color:var(--dim2)">→ chargé dans la boîte à outils ci-dessous : contrôle prévol, aperçu 3D et passeport s'appliquent maintenant à ce fichier.</span>`;

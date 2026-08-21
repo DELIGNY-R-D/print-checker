@@ -511,11 +511,70 @@ export function slScripts(preset,cfg){
   return {start:marlinStart,end:marlinEnd};
 }
 
+// Hauteur de couche ADAPTATIVE : fine sur les surfaces peu inclinées (chaque
+// couche y dessine un large « gradin » visible), grossière sur les parois
+// quasi verticales (le gradin y est minuscule, quelle que soit l'épaisseur).
+// Formule standard (le même principe que PrusaSlicer/Cura « Adaptive
+// Layers ») : une facette dont la normale fait un angle β avec la verticale
+// EST inclinée de β par rapport à l'horizontale (normale verticale = facette
+// horizontale, normale horizontale = paroi verticale). Trancher à hauteur h
+// une telle facette dessine un gradin de largeur h/tan(β) — donc, pour une
+// largeur de gradin cible `cusp`, la hauteur admissible est h = cusp·tan(β).
+// β→90° (paroi franche) → tan→∞ → h borné par hmax. β→0° (presque à plat)
+// → tan→0 → h borné par hmin. Décision prise sur la PIRE facette (la plus
+// à plat) présente dans la fenêtre d'anticipation [z, z+hmax] : c'est elle
+// qui impose la couche la plus fine.
+export function slAdaptiveSchedule(tris, cfg){
+  const P=slPrepare(tris, cfg.bed);
+  const height=P.size[2];
+  const n=tris.length, nzAbs=new Float64Array(n);
+  for(let i=0;i<n;i++){
+    const o=i*9;
+    const ux=P.V[o+3]-P.V[o],   uy=P.V[o+4]-P.V[o+1], uz=P.V[o+5]-P.V[o+2];
+    const vx=P.V[o+6]-P.V[o],   vy=P.V[o+7]-P.V[o+1], vz=P.V[o+8]-P.V[o+2];
+    const nx=uy*vz-uz*vy, ny=uz*vx-ux*vz, nz=ux*vy-uy*vx;
+    const l=Math.hypot(nx,ny,nz)||1;
+    nzAbs[i]=Math.abs(nz)/l;
+  }
+  const order=P.ord;
+  let ptr=0, active=[];
+  const zs=[height<=cfg.firstH?height:cfg.firstH], hs=[zs[0]];
+  let z=zs[0];
+  while(z<height-1e-6){
+    const zLook=Math.min(height, z+cfg.hmax);
+    while(ptr<n && P.zlo[order[ptr]]<=zLook) active.push(order[ptr++]);
+    active=active.filter(t=>P.zhi[t]>=z);
+    let worst=0;                          // 0 = rien d'assez a plat -> paroi franche
+    for(const t of active) if(nzAbs[t]>worst) worst=nzAbs[t];
+    let h = worst<1e-6 ? cfg.hmax : cfg.cusp*Math.sqrt(Math.max(0,1-worst*worst))/worst;
+    h=Math.max(cfg.hmin,Math.min(cfg.hmax,h));
+    // Reliquat absorbé dans CETTE couche plutôt que laissé en dernière marche
+    // séparée : sans ce garde-fou, le tout dernier pas peut tomber sous hmin
+    // (une tranche de 0,03 mm rencontrée en test) — moins fiable à imprimer
+    // qu'une dernière couche un peu plus épaisse que prévu.
+    if(height-(z+h)<cfg.hmin) h=height-z;
+    z+=h; zs.push(z); hs.push(h);
+  }
+  return {zs, hs, height};
+}
+
 // ── Boucle principale de tranchage ──────────────────────────────────────────
 export async function slSlice(tris,cfg,onProgress){
   const P=slPrepare(tris,cfg.bed);
   const height=P.size[2];
-  const nLayers=Math.max(1,Math.floor((height-cfg.firstH)/cfg.layerH)+1);
+  let nLayers, zPrint, zSlice, hOf, schedule=null;
+  if(cfg.adaptive){
+    schedule=slAdaptiveSchedule(tris,{bed:cfg.bed, firstH:cfg.firstH, hmin:cfg.hmin, hmax:cfg.hmax, cusp:cfg.cusp});
+    nLayers=schedule.zs.length;
+    zPrint=i=>schedule.zs[i];
+    zSlice=i=>i===0?cfg.firstH/2:(schedule.zs[i-1]+schedule.zs[i])/2;
+    hOf=i=>schedule.hs[i];
+  } else {
+    nLayers=Math.max(1,Math.floor((height-cfg.firstH)/cfg.layerH)+1);
+    zPrint=i=>(i===0?cfg.firstH:cfg.firstH+i*cfg.layerH);
+    zSlice=i=>(i===0?cfg.firstH/2:cfg.firstH+(i-0.5)*cfg.layerH);
+    hOf=i=>(i===0?cfg.firstH:cfg.layerH);
+  }
   if(nLayers>SL_MAXLAYERS) throw new Error(`${nLayers} couches — au-delà du plafond de ${SL_MAXLAYERS}. Augmente la hauteur de couche.`);
   const lw=cfg.lineW;
   // pas de raster : au moins 3 échantillons par largeur de ligne, borné par la mémoire
@@ -541,8 +600,6 @@ export async function slSlice(tris,cfg,onProgress){
   for(let r=0;r<RING;r++){ ring.push(new Uint8Array(WH)); ringBB.push(new Int32Array(4)); }
   const ringOf=new Int32Array(RING).fill(-1);
   const slot=i=>((i%RING)+RING)%RING;
-  const zSlice=i=>(i===0?cfg.firstH/2:cfg.firstH+(i-0.5)*cfg.layerH);
-  const zPrint=i=>(i===0?cfg.firstH:cfg.firstH+i*cfg.layerH);
   // Balayage monotone : la liste active ne contient que les triangles qui
   // coupent le plan courant, d'où un coût quasi linéaire en nombre de couches.
   let ptr=0, active=[];
@@ -582,7 +639,7 @@ export async function slSlice(tris,cfg,onProgress){
     ensure(i+N);
     const mask=ensure(i);
     _lap('raster');
-    const z=zPrint(i), h=(i===0?cfg.firstH:cfg.layerH), eF=lw*h/FIL_A;
+    const z=zPrint(i), h=hOf(i), eF=lw*h/FIL_A;
     const vPer=i===0?cfg.vFirst:cfg.vPer, vFil=i===0?cfg.vFirst:cfg.vFill;
     w.raw(`;LAYER:${i}`); w.raw(`;Z:${z.toFixed(3)}`);
     w.moveZ(z,cfg.vTrav/2);
@@ -685,18 +742,31 @@ export async function slSlice(tris,cfg,onProgress){
     `; modele          : ${cfg.name}`,
     `; machine         : ${cfg.printerName} · plateau ${cfg.bed.join('×')} mm`,
     `; matiere         : ${mat.label} · buse ${cfg.nozC} °C · plateau ${cfg.bedC} °C`,
-    `; couche          : ${cfg.layerH} mm (1re ${cfg.firstH} mm) · buse ${cfg.nozzle} mm · ligne ${lw.toFixed(3)} mm`,
+    schedule
+      ? `; couche          : ADAPTATIVE ${cfg.hmin}-${cfg.hmax} mm (1re ${cfg.firstH} mm) · buse ${cfg.nozzle} mm · ligne ${lw.toFixed(3)} mm`
+      : `; couche          : ${cfg.layerH} mm (1re ${cfg.firstH} mm) · buse ${cfg.nozzle} mm · ligne ${lw.toFixed(3)} mm`,
     `; perimetres      : ${cfg.perims} · pleines dessus/dessous ${cfg.topBottom} · remplissage ${cfg.infill} %`,
     `; raster          : ${px.toFixed(4)} mm/pixel · grille ${W}×${H}`,
     '; LIMITES         : pas de supports, pas de ponts, pas de parois < diametre de buse,',
-    ';                   pas de lissage, pas de hauteur de couche variable.',
+    ';                   pas de lissage.',
     ';                   Verifie le resultat au controle prevol avant de lancer.',
     `;LAYER_COUNT:${nLayers}`,
     `;TIME:${timeS}`,
     `;Filament used: ${filM.toFixed(3)}m`);
+  // Gain quantifié de la hauteur adaptative : couches économisées par rapport
+  // à ce qu'aurait exigé la MÊME qualité (hmin) partout, uniformément — c'est
+  // la comparaison honnête, pas juste "moins de couches que l'ancien réglage".
+  let adaptive=null;
+  if(schedule){
+    const hs=schedule.hs;
+    const nUniformMin=Math.max(1,Math.ceil((height-cfg.firstH)/cfg.hmin)+1);
+    adaptive={hMin:Math.min(...hs), hMax:Math.max(...hs),
+      hAvg:hs.reduce((a,b)=>a+b,0)/hs.length,
+      nLayers, nUniformMin, gainPct:100*(1-nLayers/nUniformMin)};
+  }
   return {gcode:head.join('\n')+'\n'+w.out.join('\n')+'\n',
           nLayers, timeS, filM, weightG, emptyLayers, px, grid:[W,H],
-          costEur:weightG/1000*mat.priceKg, height, dist:w.dist, prof:PROF};
+          costEur:weightG/1000*mat.priceKg, height, dist:w.dist, prof:PROF, adaptive};
 }
 
 // ══ RÉPARATION DU MAILLAGE ══════════════════════════════════════════════════
